@@ -1,36 +1,78 @@
 # ComfyEdit
 
-**An agent should spend its context on the change, not on escaping shell commands.**
+ComfyEdit is a guarded editing toolkit for coding agents. It lets you discover
+files, read only the source you need, prepare a reviewable batch, apply it only
+if nobody changed the files, and undo the transaction later. It handles ordinary
+text, Python symbols, renames, file moves, creation, deletion, and interrupted
+writes. It is local, deterministic, and needs no API key or network service.
 
-ComfyEdit is a local editing workspace for coding agents. Find code, read bounded
-source pages, preview a batch of edits, and apply or undo it with version checks.
-Batches can create, move, delete, and edit files. Interrupted transactions can be
-inspected and recovered. No API key, model, or network service required.
+Use it when a change is large enough that an accidental overwrite, incomplete
+diff, or hard-to-reverse edit would waste time. For a tiny visible one-line fix,
+your normal patch tool is quicker.
 
-Status: **tested prototype, v0.2**. Linux and macOS; Python 3.11+. Not published
-to PyPI. Install from this repository.
+## Examples
 
-`plan_id` means the opaque ID of a saved edit preview. It is not an agent's
-reasoning plan. If an agent loses the ID, call `list_previews()` to find recent
-unapplied previews; call `discard_preview(plan_id)` to remove one that is no
-longer needed. Applied previews remain available for diff history and undo.
+### Make a guarded multi-file change
+
+Read the target, copy its returned `version`, preview the complete batch, inspect
+the diff, then commit the saved preview:
+
+```json
+{"tool":"read_code","file":"src/parser.py","symbol":"Parser.parse"}
+```
+
+```json
+{"tool":"preview","edits":[
+  {"operation":"replace_range","file":"src/parser.py","version":"<version>","start_line":42,"start_column":5,"end_line":44,"end_column":1,"code":"return parse_fast(value)\n"},
+  {"operation":"create_file","file":"tests/test_parser.py","code":"def test_fast_path():\n    assert True\n"}
+]}
+```
+
+The preview gives you a complete diff and a saved receipt. Send that receipt to
+`commit_edit` only after reviewing the diff. If another process touched either
+file, the commit fails safely and you reread the files.
+
+### Rename a Python symbol everywhere Rope can resolve it
+
+```json
+{"tool":"rename_symbol","file":"src/parser.py","symbol":"Parser.parse","new_name":"parse_fast","version":"<version>"}
+```
+
+Review the returned cross-file diff, commit it, run your tests, and keep the
+returned undo ID if you may need to reverse the transaction.
+
+### Add text without reconstructing a whole function
+
+`insert_at` handles the beginning, an exact line/column, an empty file, and EOF.
+`replace_range` handles a small block, including a range that spans lines. Both
+are previewable, version-checked, and undoable.
+
+```json
+{"tool":"preview","edits":[{"operation":"insert_at","file":"src/parser.py","version":"<version>","line":1,"column":1,"code":"# Fast path\n"}]}
+```
+
+### Recover after an interrupted write
+
+If a process dies during commit, call `list_transactions`, inspect each file's
+state, then call `recover_transaction` with `rollback` or `finish`. Recovery is
+guarded and refuses to overwrite a file that changed to an unknown state.
 
 ## Install
 
-From the checked-out repository:
+From this repository:
 
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[agent]'
 ```
 
-The core and CLI have no runtime dependencies. Install `.` for those alone;
-`.[python]` adds Rope renaming; `.[agent]` adds renaming and the MCP server.
+`.[agent]` installs the MCP server and Python rename support. Install `.` for
+the dependency-free CLI/core, or `.[python]` for rename support without MCP.
 
 ## Connect an agent
 
-Use these fields in your MCP client's server configuration. Replace both paths
-with absolute paths on your machine. Each server is scoped to one project.
+Point your MCP client at the executable inside the virtual environment. Replace
+the two absolute paths with the repository and project you want to edit:
 
 ```json
 {
@@ -43,40 +85,19 @@ with absolute paths on your machine. Each server is scoped to one project.
 }
 ```
 
-Configuration wrappers vary by client; the command and arguments are the same.
-Only stdio is supported; ComfyEdit does not open a listening port.
+Each server is scoped to one project root. Run one server per checkout when you
+work across repositories. Only stdio is supported; no listening port is opened.
 
 ## First run
 
-Use a temporary project for this smoke test. After installing, start with a read:
+After installation, try the runnable workflow example:
 
 ```sh
-.venv/bin/comfyedit --root /path/to/project <<'JSON'
-{"tool":"read_code","file":"src/planner.py","max_lines":40}
-JSON
+.venv/bin/python examples/workflow.py
 ```
 
-Copy the returned `version` into a small preview. Review `diff` (and any
-`read_diff` pages), then apply the exact saved preview:
-
-```sh
-.venv/bin/comfyedit --root /path/to/project <<'JSON'
-{"tool":"preview","edits":[{"operation":"replace_text","file":"src/planner.py","version":"<version>","old":"timeout = 10","new":"timeout = 30"}]}
-JSON
-
-.venv/bin/comfyedit --root /path/to/project <<'JSON'
-{"tool":"commit_edit","plan_id":"<saved-preview ID>"}
-JSON
-```
-
-The commit returns an `undo_id`. Call `undo_edit` with it, review the reverse
-preview, and commit that preview if you want to restore the original state.
-
-Use ComfyEdit when stale-write protection, complete diff review, file lifecycle
-changes, project-wide renames, or guarded undo matter. Use ordinary patch or
-terminal tools when the change is tiny, already fully visible, and does not need
-these transaction guarantees. After committing, run the project's tests with
-your normal execution tool; ComfyEdit never executes project code automatically.
+It creates a disposable project, searches it, previews a source edit and a new
+test, reads every diff page, commits, and undoes the transaction.
 
 ## The comfortable loop
 
@@ -170,6 +191,9 @@ empty file or end-of-file, use the position immediately after the final line
 normalized to the target file's existing style. In an ordered batch, each later
 operation sees the text produced by earlier operations, while every `version`
 still names the file before the batch.
+
+For CRLF files, keep the two-character line ending together: a coordinate may
+be immediately before `\r` or immediately after `\n`, but never between them.
 
 ```json
 {"operation":"insert_at","file":"src/parser.py","version":"<version from read_code>","line":12,"column":1,"code":"# Fast path\n"}

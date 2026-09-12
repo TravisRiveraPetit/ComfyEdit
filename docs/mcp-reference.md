@@ -39,3 +39,5 @@ For example:
 `line=1,column=1` is the beginning; `line=physical_line_count+1,column=1` is EOF.
 Coordinates for later edits in an ordered batch are evaluated against the text
 produced by earlier edits, while versions still refer to the original source.
+CRLF pairs are indivisible: positions between `\r` and `\n` return
+`invalid_range`.

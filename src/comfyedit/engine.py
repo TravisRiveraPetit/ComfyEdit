@@ -52,9 +52,13 @@ def position_offset(source, line, column):
         return len(source)
     if line < 1 or line > len(lines):
         raise EditError("invalid_range", "Line is outside the file.", line=line, total_lines=len(lines))
-    if column < 1 or column > len(lines[line - 1]) + 1:
+    line_text = lines[line - 1]
+    if column < 1 or column > len(line_text) + 1:
         raise EditError("invalid_range", "Column is outside the selected physical line.",
-                        line=line, column=column, line_length=len(lines[line - 1]))
+                        line=line, column=column, line_length=len(line_text))
+    if line_text.endswith("\r\n") and column == len(line_text):
+        raise EditError("invalid_range", "A CRLF line ending must be kept together; choose before CR or after LF.",
+                        line=line, column=column)
     return sum(len(item) for item in lines[:line - 1]) + column - 1
 
 

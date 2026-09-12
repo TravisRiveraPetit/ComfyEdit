@@ -143,6 +143,16 @@ class WorkflowTests(unittest.TestCase):
         self.assert_error("invalid_range", self.editor.preview,
                           [dict(base, start_line=1, start_column=3, end_line=1, end_column=2)])
 
+        crlf = self.root / "crlf.txt"
+        crlf.write_bytes(b"a\r\nb\r\n")
+        crlf_version = self.editor.read_code("crlf.txt")["version"]
+        self.assert_error("invalid_range", self.editor.preview, [dict(
+            operation="insert_at", file="crlf.txt", version=crlf_version,
+            line=1, column=3, code="broken")])
+        self.assert_error("invalid_range", self.editor.preview, [dict(
+            operation="replace_range", file="crlf.txt", version=crlf_version,
+            start_line=1, start_column=2, end_line=1, end_column=3, code="broken")])
+
     def test_insert_at_supports_empty_files_eof_and_crlf(self):
         empty = self.root / "empty.txt"
         empty.write_bytes(b"")

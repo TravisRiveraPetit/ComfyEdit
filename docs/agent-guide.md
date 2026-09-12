@@ -69,6 +69,9 @@ and `line=physical_line_count+1,column=1` is EOF. Inserted newlines follow the
 target file's style. Later edits in one batch use the source produced by earlier
 edits, even though all edits carry the original file version.
 
+In a CRLF file, do not select or insert between `\r` and `\n`; use the position
+before the pair or the next line's column 1.
+
 ```json
 {"operation":"insert_at","file":"src/parser.py","version":"<read version>","line":12,"column":1,"code":"# Fast path\n"}
 ```
