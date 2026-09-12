@@ -133,6 +133,43 @@ class WorkflowTests(unittest.TestCase):
         self.editor.commit_edit(plan["plan_id"])
         self.assertEqual(path.read_bytes(), "😀 new\r\nrow line\r\nthird".encode())
 
+    def test_replace_regex_reports_bounded_matches_and_backreferences(self):
+        path = self.root / "notes.txt"
+        path.write_text("name=alice\nname=bob\n")
+        version = self.editor.read_code("notes.txt")["version"]
+        plan = self.editor.preview([dict(operation="replace_regex", file="notes.txt", version=version,
+                                          pattern=r"name=(\w+)", replacement=r"user=\1",
+                                          expected_matches=2)])
+        report = plan["match_reports"][0]
+        self.assertEqual((report["count"], report["shown"], report["truncated"]), (2, 2, False))
+        self.assertEqual((report["matches"][0]["start_line"], report["matches"][0]["start_column"]), (1, 1))
+        self.assertIn("-name=alice", plan["diff"])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertEqual(path.read_text(), "user=alice\nuser=bob\n")
+        persisted = self.editor.read_diff(plan["plan_id"])
+        self.assertEqual(persisted["match_reports"], plan["match_reports"])
+
+    def test_replace_regex_requires_explicit_multiline_opt_in(self):
+        path = self.root / "block.txt"
+        path.write_text("begin\nbody\nend\n")
+        version = self.editor.read_code("block.txt")["version"]
+        edit = dict(operation="replace_regex", file="block.txt", version=version,
+                    pattern=r"begin\nbody", replacement="section", expected_matches=1)
+        self.assert_error("multiline_required", self.editor.preview, [edit])
+        edit["multiline"] = True
+        plan = self.editor.preview([edit])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertEqual(path.read_text(), "section\nend\n")
+
+    def test_replace_regex_bounds_pathological_patterns(self):
+        path = self.root / "hostile.txt"
+        path.write_text("a" * 100000 + "!")
+        version = self.editor.read_code("hostile.txt")["version"]
+        with self.assertRaises(EditError) as caught:
+            self.editor.preview([dict(operation="replace_regex", file="hostile.txt", version=version,
+                                      pattern=r"(a+)+$", replacement="safe")])
+        self.assertEqual(caught.exception.code, "regex_timeout")
+
     def test_replace_range_rejects_invalid_coordinates(self):
         version = self.editor.read_code("a.py")["version"]
         base = dict(operation="replace_range", file="a.py", version=version,

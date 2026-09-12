@@ -22,8 +22,8 @@ real change. Completed work stays listed so the project history remains clear.
   reconstructing an entire Python symbol.
 - [x] Add an explicit append/insert-at-location operation with clear line and
   column guards.
-- [ ] Add opt-in regex and multi-line search/replacement, with match previews and
-  the same stale-version contract as literal replacement.
+- [x] Add opt-in regex and multi-line search/replacement, with bounded match
+  previews and the same stale-version contract as literal replacement.
 - [ ] Add structured JSON/YAML edits only after choosing a parser and preserving
   formatting behavior; do not silently reserialize user configuration.
 

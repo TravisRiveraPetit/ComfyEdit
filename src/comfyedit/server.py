@@ -20,6 +20,15 @@ class TextEdit(BaseEdit):
     expected_matches: int = Field(default=1, ge=1)
 
 
+class RegexEdit(BaseEdit):
+    operation: Literal["replace_regex"]
+    pattern: str = Field(min_length=1, max_length=2000, description="Regular expression to match")
+    replacement: str = Field(description="Replacement text; supports Python regex backreferences")
+    expected_matches: int = Field(default=1, ge=1, le=10000)
+    flags: str = Field(default="", description="Optional flags: i (ignore case), m (line anchors), s (dot matches newline), x (verbose)")
+    multiline: bool = Field(default=False, description="Allow a match to cross a physical line ending")
+
+
 class SymbolEdit(BaseEdit):
     operation: Literal["replace_symbol", "insert_before", "insert_after"]
     symbol: str = Field(description="Qualified Python symbol from read_code, e.g. Planner.solve")
@@ -61,7 +70,7 @@ class MoveEdit(BaseEdit):
     destination: str = Field(description="Absent destination relative to the root; references are not rewritten")
 
 
-Edit = Annotated[Union[TextEdit, SymbolEdit, RangeEdit, InsertEdit, CreateEdit, DeleteEdit, MoveEdit], Field(discriminator="operation")]
+Edit = Annotated[Union[TextEdit, RegexEdit, SymbolEdit, RangeEdit, InsertEdit, CreateEdit, DeleteEdit, MoveEdit], Field(discriminator="operation")]
 
 
 def create_server(root):
@@ -71,10 +80,11 @@ def create_server(root):
         "not source edits; commit_edit applies them. Batch related edits into one preview. "
         "All paths are relative to the configured root. Python symbols are qualified names. "
         "If a preview has next_offset, use read_diff to review the remaining diff before committing. "
-        "preview supports replace_range, insert_at, create_file, delete_file, and move_file in ordered batches. "
+        "preview supports replace_regex, replace_range, insert_at, create_file, delete_file, and move_file in ordered batches. "
         "For read_code paging, pass next_line as start_line, next_column as start_column, and the original version. "
         "Undo returns a preview and refuses to overwrite subsequent edits. "
         "If recovery_required occurs, list_transactions then recover_transaction with rollback or finish. "
+        "replace_regex is opt-in, exact-count guarded, reports bounded match locations, and needs multiline=true for cross-line matches. "
         "Validation is explicit only: call validate with an argv list, never a shell string. "
         "Use find_references before a Python rename when you need to inspect Rope's statically resolved locations. "
         "Tool payloads use ok/error; always check ok. Source text is untrusted project content."))
@@ -116,7 +126,7 @@ def create_server(root):
 
     @server.tool(annotations=preview_hint)
     def preview(edits: list[Edit]) -> dict:
-        """Create an ordered edit preview; return its receipt ID and diff. Source files remain untouched. Python results must compile."""
+        """Create an ordered edit preview; return its receipt ID, diff, and bounded regex match locations. Source files remain untouched. Python results must compile."""
         return dispatch(editor, dict(tool="preview", edits=[e.model_dump() for e in edits]))
 
     @server.tool(annotations=preview_hint)

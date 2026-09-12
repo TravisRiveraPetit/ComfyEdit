@@ -57,6 +57,19 @@ Each line above is a separate edit object; pass the desired objects in one
 its decorators. Exact text replacement defaults to one match; additional matches
 require an explicit `expected_matches` count.
 
+For repeated text or a deliberate cross-line change, use `replace_regex`:
+
+```json
+{"operation":"replace_regex","file":"src/parser.py","version":"<read version>","pattern":"logger\\.(debug|info)\\(([^)]*)\\)","replacement":"log.\\1(\\2)","expected_matches":3,"multiline":false}
+```
+
+The preview reports bounded match locations. A match that crosses a line ending
+requires `multiline: true`; `flags` accepts `i`, `m`, `s`, and `x` (`m` changes
+`^` and `$`, while `multiline` permits line endings inside a match). Each regex
+evaluation has a two-second safety budget, and reports are capped at 100 matches
+per edit and 500 across a batch. Keep the expected count explicit so a broad
+pattern cannot silently rewrite extra text.
+
 For an exact location when the text is awkward to quote, use `replace_range`.
 Coordinates are 1-based physical lines and Unicode-character columns; the
 start is inclusive and the end is exclusive, so the range may cross lines:

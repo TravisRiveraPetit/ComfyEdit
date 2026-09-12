@@ -152,12 +152,6 @@ the transaction.
 3. `commit_edit(plan_id=...)` applies exactly that preview, checking input versions
    again. It returns new versions and an `undo_id`.
 
-**`plan_id` is the ID of a saved edit preview.** It is an opaque receipt for
-specific before/after file contents, not an AI reasoning plan or a planning mode.
-`commit_edit` uses that receipt to apply exactly the changes you reviewed.
-`undo_id` identifies a completed transaction; `undo_edit` turns it into a reverse
-preview with its own `plan_id`.
-
 The MCP transport can report malformed calls as `isError`; valid calls can still
 return an application payload with `ok: false`. Check both layers. The CLI always
 prints the application payload and exits 1 for `ok: false`.
@@ -195,6 +189,28 @@ For any UTF-8 file, use an exact replacement:
 The default is exactly one match. More matches require an explicit count.
 Edits in a batch run in order; every version refers to the original file,
 including when several edits target the same file.
+
+For repeated or cross-line text changes, use the opt-in regex operation. It
+returns the first 100 match locations alongside the diff, requires an exact
+match count, and rejects cross-line matches unless `multiline` is true:
+
+```json
+{
+  "operation": "replace_regex",
+  "file": "src/parser.py",
+  "version": "<version from read_code>",
+  "pattern": "logger\\.(debug|info)\\(([^)]*)\\)",
+  "replacement": "log.\\1(\\2)",
+  "expected_matches": 3,
+  "flags": "",
+  "multiline": false
+}
+```
+
+Use `flags` `i`, `m`, `s`, or `x` when needed. The regex edit has the same
+stale-version guard, preview, commit, and undo behavior as every other edit.
+Each regex evaluation has a two-second safety budget, and match locations are
+bounded to 100 per edit and 500 across a batch.
 
 When you know the exact location but quoting the old text is inconvenient, use
 `replace_range`. It uses 1-based physical lines and Unicode-character columns;

@@ -22,7 +22,7 @@ an application payload exists. Check both.
 | `recover_transaction` | `transaction_id`, `action` = `rollback` or `finish` | Direct guarded recovery of a pending transaction |
 | `validate` | `command`, optional `timeout_seconds`, `max_output_chars` | Explicit argv command with bounded output and status |
 
-Edit objects use `replace_text`, `replace_range`, `insert_at`, `replace_symbol`, `insert_before`,
+Edit objects use `replace_text`, `replace_regex`, `replace_range`, `insert_at`, `replace_symbol`, `insert_before`,
 `insert_after`, `create_file`, `move_file`, or `delete_file`. Existing paths use
 the version read before the batch; a path absent before the batch uses
 `version: null` when it is created or populated by a move. `create_file` has no
@@ -36,6 +36,14 @@ For example:
 ```json
 {"operation":"replace_range","file":"notes.txt","version":"<read version>","start_line":4,"start_column":1,"end_line":6,"end_column":1,"code":"updated\ntext\n"}
 ```
+
+`replace_regex` is opt-in and exact-count guarded. Set `multiline: true` for a
+match that crosses a line ending; otherwise such matches return
+`multiline_required`. `flags` may contain `i`, `m`, `s`, and `x`. The preview
+and `read_diff` response include up to 100 match locations under
+`match_reports` (500 locations maximum across one batch). Each regex evaluation
+has a two-second safety budget; a timeout returns `regex_timeout` without saving
+a preview.
 
 `insert_at` uses `line` and `column` for an empty insertion point. Position
 `line=1,column=1` is the beginning; `line=physical_line_count+1,column=1` is EOF.
