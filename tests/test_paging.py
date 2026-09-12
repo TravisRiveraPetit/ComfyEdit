@@ -64,6 +64,21 @@ class PagingTests(unittest.TestCase):
         self.editor.commit_edit(plan["plan_id"])
         self.assertEqual((self.root / "a.py").read_bytes(), original.replace("1", "2").encode())
 
+    def test_crlf_read_pages_never_split_line_endings(self):
+        self.write("a.txt", "a\r\nb\r\n")
+        first = self.editor.read_code("a.txt", max_chars=2, include_symbols=False)
+        self.assertEqual(first["text"], "a")
+        self.assertEqual((first["next_line"], first["next_column"]), (1, 2))
+        second = self.editor.read_code("a.txt", start_line=first["next_line"],
+                                       start_column=first["next_column"], max_chars=1,
+                                       version=first["version"], include_symbols=False)
+        self.assertEqual(second["text"], "\r\n")
+        self.assertEqual((second["next_line"], second["next_column"]), (2, 1))
+        third = self.editor.read_code("a.txt", start_line=second["next_line"],
+                                      start_column=second["next_column"], max_chars=10,
+                                      version=first["version"], include_symbols=False)
+        self.assertEqual(first["text"] + second["text"] + third["text"], "a\r\nb\r\n")
+
     def test_complete_large_multifile_unicode_diff(self):
         edits, expected = [], ""
         for file, old, new in [("a.txt", "é" * 15000, "🌱" * 15000),

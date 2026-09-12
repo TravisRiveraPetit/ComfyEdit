@@ -59,7 +59,13 @@ guarded and refuses to overwrite a file that changed to an unknown state.
 
 ## Install
 
-From this repository:
+For a quick install without checking out the repository, use GitHub directly:
+
+```sh
+python3 -m pip install "comfyedit[agent] @ git+https://github.com/TravisRiveraPetit/ComfyEdit.git"
+```
+
+For a local editable install while developing ComfyEdit:
 
 ```sh
 python3 -m venv .venv
@@ -68,6 +74,8 @@ python3 -m venv .venv
 
 `.[agent]` installs the MCP server and Python rename support. Install `.` for
 the dependency-free CLI/core, or `.[python]` for rename support without MCP.
+The project is not on PyPI yet, so the GitHub URL is the supported one-line
+installation path.
 
 ## Connect an agent
 

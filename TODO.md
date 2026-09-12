@@ -14,6 +14,7 @@ real change. Completed work stays listed so the project history remains clear.
   application payload's `ok` field.
 - [x] Add a first-run path near the top of the README: install, configure one
   project, make a tiny preview, inspect it, commit, and undo it.
+- [x] Keep CRLF pairs intact in both edit coordinates and paged source reads.
 
 ## Editing power
 

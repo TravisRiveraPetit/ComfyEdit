@@ -201,8 +201,13 @@ class Editor(DiscoveryMixin):
             column = start_column if number == start_line else 1
             content = lines[number - 1][column - 1:]
             take = min(remaining, len(content))
+            # Never return a cursor between the two characters of a CRLF pair.
+            # If the page starts on CR and has only one character left, keep the
+            # pair together and let this page exceed max_chars by one.
+            if take and take < len(content) and content[take - 1:take + 1] == "\r\n":
+                take = take - 1 or 2
             chunks.append(content[:take])
-            remaining -= take
+            remaining = max(0, remaining - take)
             last = number
             if take < len(content):
                 next_line, next_column = number, column + take
