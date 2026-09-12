@@ -13,8 +13,12 @@ import os
 from pathlib import Path
 from .discovery import DiscoveryMixin
 import re
+import selectors
+import signal
 import stat
+import subprocess
 import tempfile
+import time
 import textwrap
 import uuid
 
@@ -532,6 +536,89 @@ class Editor(DiscoveryMixin):
                 items.append({"transaction_id": identifier, "status": journal["kind"],
                               "plan_id": journal.get("plan_id"), "files": self.transaction_files(journal)})
             return {"ok": True, "transactions": items, "next_offset": next_offset}
+
+    def validate(self, command, timeout_seconds=120, max_output_chars=12000):
+        """Run an explicitly requested argv command with bounded output."""
+        if (not isinstance(command, list) or not command or
+                any(type(part) is not str or not part or "\0" in part for part in command)):
+            raise EditError("invalid_command", "command must be a non-empty list of non-empty strings.")
+        if (isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or
+                not 0.1 <= timeout_seconds <= 120):
+            raise EditError("invalid_range", "timeout_seconds must be between 0.1 and 120.")
+        if type(max_output_chars) is not int or not 100 <= max_output_chars <= 100000:
+            raise EditError("invalid_range", "max_output_chars must be between 100 and 100000.")
+        with self.lock() as state:
+            pending = [identifier for identifier, journal in self.journals(state)
+                       if journal["kind"] == "pending"]
+        if pending:
+            raise EditError("recovery_required", "Recover pending transactions before validation.",
+                            transaction_ids=pending)
+        started = time.monotonic()
+        try:
+            process = subprocess.Popen(command, cwd=self.root, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, shell=False, start_new_session=True)
+        except FileNotFoundError as error:
+            raise EditError("command_not_found", "The validation command was not found.", command=command) from error
+        except OSError as error:
+            raise EditError("validation_error", str(error), command=command) from error
+        selector = selectors.DefaultSelector()
+        streams = {process.stdout: bytearray(), process.stderr: bytearray()}
+        truncated = {process.stdout: False, process.stderr: False}
+        for stream in streams:
+            selector.register(stream, selectors.EVENT_READ)
+        max_bytes = max_output_chars * 4
+        timed_out = False
+        while selector.get_map():
+            remaining = timeout_seconds - (time.monotonic() - started)
+            if remaining <= 0:
+                timed_out = True
+                break
+            events = selector.select(remaining)
+            if not events:
+                timed_out = True
+                break
+            for key, _ in events:
+                data = key.fileobj.read1(8192)
+                if not data:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                buffer = streams[key.fileobj]
+                if len(buffer) < max_bytes:
+                    buffer.extend(data[:max_bytes - len(buffer)])
+                if len(data) > max_bytes - min(len(buffer), max_bytes):
+                    truncated[key.fileobj] = True
+        if timed_out:
+            try:
+                if hasattr(os, "killpg"):
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+        try:
+            exit_code = process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            exit_code = process.wait()
+        for stream in list(streams):
+            try:
+                selector.unregister(stream)
+            except (KeyError, ValueError):
+                pass
+            try:
+                stream.close()
+            except OSError:
+                pass
+        selector.close()
+        stdout = bytes(streams[process.stdout]).decode("utf-8", errors="replace")[:max_output_chars]
+        stderr = bytes(streams[process.stderr]).decode("utf-8", errors="replace")[:max_output_chars]
+        status = "timed_out" if timed_out else "passed" if exit_code == 0 else "failed"
+        return {"ok": True, "status": status, "command": command, "exit_code": None if timed_out else exit_code,
+                "timed_out": timed_out, "stdout": stdout, "stderr": stderr,
+                "stdout_truncated": truncated[process.stdout] or len(stdout) == max_output_chars,
+                "stderr_truncated": truncated[process.stderr] or len(stderr) == max_output_chars,
+                "duration_seconds": round(time.monotonic() - started, 4)}
 
     def clean_created_dirs(self, journal):
         for name in reversed(journal.get("created_dirs", [])):

@@ -2,7 +2,7 @@
 
 Use ComfyEdit for guarded batches, Python symbol edits/renames, and changes that
 need reliable reversal. Ordinary patch tools remain useful for simple edits;
-project test execution belongs to your normal execution tool.
+use `validate` when you want bounded test/lint output in the same project root.
 
 ## Choose a tool
 
@@ -20,6 +20,7 @@ project test execution belongs to your normal execution tool.
 | Stage reversal | `undo_edit(undo_id)`; review and commit its preview |
 | Inspect an interrupted write | `list_transactions()` |
 | Restore or finish an interrupted write | `recover_transaction(transaction_id, action="rollback" or "finish")` |
+| Run an explicit bounded test/lint command | `validate(command=[...])` |
 
 **`plan_id` means saved edit preview ID.** It is unrelated to the agent's thinking,
 reasoning, or planning mode. `preview` stores proposed changes and returns this
@@ -88,6 +89,12 @@ files changed to anything else. Preserve metadata if corruption is reported.
 
 After a successful commit, run the project's appropriate tests. Syntax validation
 alone does not establish correctness; Rope cannot reliably cover dynamic callers.
+
+You can run an explicit command through `validate(command=[...])` after the
+commit. Pass argv as a list, never a shell string. It returns a successful tool
+payload even when the command itself fails; inspect `status` (`passed`, `failed`,
+or `timed_out`), `exit_code`, and the bounded stdout/stderr. Validation is never
+implicit and is blocked while a transaction needs recovery.
 
 Example pending-transaction summary:
 

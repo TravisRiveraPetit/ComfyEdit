@@ -57,6 +57,19 @@ If a process dies during commit, call `list_transactions`, inspect each file's
 state, then call `recover_transaction` with `rollback` or `finish`. Recovery is
 guarded and refuses to overwrite a file that changed to an unknown state.
 
+### Run validation explicitly
+
+After committing, ask ComfyEdit to run a bounded argv command and capture its
+result. It never invokes a shell, runs during reads, or runs implicitly after a
+commit:
+
+```json
+{"tool":"validate","command":["python","-m","pytest","-q"],"timeout_seconds":120,"max_output_chars":12000}
+```
+
+The result reports `passed`, `failed`, or `timed_out`, with exit status and
+bounded stdout/stderr.
+
 ## Install
 
 For a quick install without checking out the repository, use GitHub directly:
@@ -354,7 +367,7 @@ Avoid shell escaping by supplying JSON on stdin:
 JSON
 ```
 
-All twelve tools use the same fields through the CLI; add `"tool": "preview"`,
+All thirteen tools use the same fields through the CLI; add `"tool": "preview"`,
 for example. Success exits 0; errors exit 1. stdout contains JSON only.
 
 ```python

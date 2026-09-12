@@ -19,6 +19,7 @@ an application payload exists. Check both.
 | `undo_edit` | Transaction `undo_id` | Saved reverse edit preview; review and commit it |
 | `list_transactions` | `include_completed`, `offset`, `limit` | Pending/recoverable transaction states |
 | `recover_transaction` | `transaction_id`, `action` = `rollback` or `finish` | Direct guarded recovery of a pending transaction |
+| `validate` | `command`, optional `timeout_seconds`, `max_output_chars` | Explicit argv command with bounded output and status |
 
 Edit objects use `replace_text`, `replace_range`, `insert_at`, `replace_symbol`, `insert_before`,
 `insert_after`, `create_file`, `move_file`, or `delete_file`. Existing paths use

@@ -38,7 +38,7 @@ real change. Completed work stays listed so the project history remains clear.
 
 ## Workflow integration
 
-- [ ] Add an explicit, opt-in validation command adapter so agents can run the
+- [x] Add an explicit, opt-in validation command adapter so agents can run the
   project's tests or linters through a bounded, captured interface. Never run
   project code during read, preview, rename, or recovery.
 - [ ] Add a terminal/worktree integration path for agents that need commands and
