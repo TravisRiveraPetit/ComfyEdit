@@ -30,6 +30,9 @@ class SemanticTests(unittest.TestCase):
                                                 inventory_version=result["inventory_version"])
         self.assertEqual([(item["file"], item["kind"]) for item in next_page["references"]],
                          [("b.py", "import"), ("b.py", "call")])
+        (self.root / "b.py").write_text("from a import answer\nresult = answer(99)\n")
+        self.assert_error("stale_version", self.editor.find_references, "a.py", "answer", read["version"],
+                          offset=result["next_offset"], inventory_version=result["inventory_version"])
         self.assert_error("stale_version", self.editor.find_references, "a.py", "answer", read["version"],
                           inventory_version="stale")
 

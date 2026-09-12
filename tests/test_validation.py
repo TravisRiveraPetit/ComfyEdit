@@ -56,6 +56,11 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["stdout"], "x" * 99)
         self.assertFalse(result["stdout_truncated"])
 
+        larger = dispatch(self.editor, {"tool": "validate", "command": [
+            sys.executable, "-c", "print('x' * 150, end='')"], "max_output_chars": 100})
+        self.assertEqual(larger["stdout"], "x" * 100)
+        self.assertTrue(larger["stdout_truncated"])
+
     def test_validate_rejects_shell_strings_and_missing_commands(self):
         invalid = dispatch(self.editor, {"tool": "validate", "command": "echo unsafe"})
         self.assertFalse(invalid["ok"])

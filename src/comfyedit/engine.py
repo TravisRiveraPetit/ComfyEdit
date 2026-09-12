@@ -632,13 +632,15 @@ class Editor(DiscoveryMixin):
             except OSError:
                 pass
         selector.close()
-        stdout = bytes(streams[process.stdout]).decode("utf-8", errors="replace")[:max_output_chars]
-        stderr = bytes(streams[process.stderr]).decode("utf-8", errors="replace")[:max_output_chars]
+        stdout_full = bytes(streams[process.stdout]).decode("utf-8", errors="replace")
+        stderr_full = bytes(streams[process.stderr]).decode("utf-8", errors="replace")
+        stdout = stdout_full[:max_output_chars]
+        stderr = stderr_full[:max_output_chars]
         status = "timed_out" if timed_out else "passed" if exit_code == 0 else "failed"
         return {"ok": True, "status": status, "command": command, "exit_code": None if timed_out else exit_code,
                 "timed_out": timed_out, "stdout": stdout, "stderr": stderr,
-                "stdout_truncated": truncated[process.stdout],
-                "stderr_truncated": truncated[process.stderr],
+                "stdout_truncated": truncated[process.stdout] or len(stdout_full) > max_output_chars,
+                "stderr_truncated": truncated[process.stderr] or len(stderr_full) > max_output_chars,
                 "duration_seconds": round(time.monotonic() - started, 4)}
 
     def clean_created_dirs(self, journal):
@@ -828,11 +830,13 @@ class Editor(DiscoveryMixin):
             inventory = self.python_files()
             if len(inventory) > 2000:
                 raise EditError("project_too_large", "Reference search currently supports at most 2,000 Python files.")
-            current_inventory_version = digest("\0".join(inventory).encode())
+            inventory_contents = {name: self.read_bytes(name) for name in inventory}
+            current_inventory_version = digest("\0".join(
+                name + "\0" + digest(inventory_contents[name]) for name in inventory).encode())
             if inventory_version is not None and inventory_version != current_inventory_version:
                 raise EditError("stale_version", "Python file inventory changed; restart reference search.",
                                 current_version=current_inventory_version)
-            before = {f: self.read_bytes(f).decode() for f in inventory}
+            before = {f: inventory_contents[f].decode() for f in inventory}
             if file not in before or digest(before[file].encode()) != version:
                 raise EditError("stale_version", "Read the source again before finding references.", file=file)
             _, _, _, node = select(before[file], symbol)
