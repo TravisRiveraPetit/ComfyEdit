@@ -8,7 +8,7 @@ an application payload exists. Check both.
 | Tool | Arguments | Result or next step |
 | --- | --- | --- |
 | `list_files` | `pattern`, `offset`, `limit`, optional inventory `version` | Relative paths, inventory version, `next_offset` |
-| `search_code` | Literal `query`, `pattern`, `offset`, `max_results` | Versioned line/column matches, `next_offset` |
+| `search_code` | Literal `query`, `pattern`, `offset`, `max_results`, optional `version` | Versioned line/column matches, paging guard, `next_offset` |
 | `read_code` | `file`, optional `symbol`; `start_line`, `start_column`, `max_lines`, `max_chars`, `symbol_offset`, `max_symbols`, `include_symbols`, `version` | Bounded text, source version, cursors |
 | `preview` | Ordered `edits` array | Saved edit-preview receipt `plan_id` and diff |
 | `read_diff` | `plan_id`, `offset`, `max_chars` | Complete saved diff pages |

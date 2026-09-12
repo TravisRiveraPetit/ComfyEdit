@@ -101,6 +101,9 @@ On `recovery_required`, inspect the journal's per-file states. Recovery directly
 writes the saved original (`rollback`) or proposed (`finish`) state. It refuses
 files changed to anything else. Preserve metadata if corruption is reported.
 
+For `search_code`, pass the returned `version` with every later `offset`; this
+keeps result pages stable and fails safely if a source file changes.
+
 After a successful commit, run the project's appropriate tests. Syntax validation
 alone does not establish correctness; Rope cannot reliably cover dynamic callers.
 

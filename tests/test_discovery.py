@@ -58,10 +58,14 @@ class DiscoveryTests(unittest.TestCase):
         first = self.editor.search_code("cat", max_results=2)
         self.assertEqual([(m["line"], m["column"]) for m in first["matches"]], [(1, 3), (1, 7)])
         self.assertEqual(first["matches"][0]["version"], self.editor.read_code("a.txt")["version"])
-        last = self.editor.search_code("cat", offset=first["next_offset"])
+        last = self.editor.search_code("cat", offset=first["next_offset"], version=first["version"])
         self.assertEqual([(m["line"], m["column"]) for m in last["matches"]], [(2, 6)])
         self.assertIsNone(last["next_offset"])
         self.assertEqual(len(self.editor.search_code("[.*]")["matches"]), 1)
+        self.write("a.txt", "changed\n")
+        with self.assertRaises(EditError) as caught:
+            self.editor.search_code("cat", offset=2, version=first["version"])
+        self.assertEqual(caught.exception.code, "stale_version")
 
     def test_search_bounds_snippets_and_reports_skipped_binary_files(self):
         self.write("a.txt", "x" * 50000 + "needle" + "x" * 50000)

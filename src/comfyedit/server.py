@@ -96,9 +96,11 @@ def create_server(root):
         return dispatch(editor, dict(tool="list_files", pattern=pattern, offset=offset, limit=limit, version=version))
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-    def search_code(query: str, pattern: str = "*", offset: int = 0, max_results: int = 50) -> dict:
-        """Find a single-line literal; return versioned matches and bounded snippets. Live results; follow next_offset. No regex."""
-        return dispatch(editor, dict(tool="search_code", query=query, pattern=pattern, offset=offset, max_results=max_results))
+    def search_code(query: str, pattern: str = "*", offset: int = 0, max_results: int = 50,
+                    version: str | None = None) -> dict:
+        """Find a single-line literal; return versioned matches and bounded snippets. Pass version on later pages to detect source changes. No regex."""
+        return dispatch(editor, dict(tool="search_code", query=query, pattern=pattern, offset=offset,
+                                     max_results=max_results, version=version))
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     def read_code(file: str, symbol: str | None = None, start_line: int = 1, max_lines: int = 120,

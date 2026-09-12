@@ -323,8 +323,9 @@ unneeded ones when working on a long-lived project.
 `search_code(query="literal text", pattern="*.py", max_results=50)` returns
 non-overlapping, case-sensitive, single-line literal matches with file versions,
 1-based lines/columns, and snippets of at most 240 characters. Follow `next_offset`
-for more matches. Results are live, not a cross-file snapshot: restart the search
-if the workspace changes while paging. Unsupported files are reported in `skipped`
+and pass the returned search `version` for more matches; a source or inventory
+change then returns `stale_version` instead of shifting the result pages.
+Unsupported files are reported in `skipped`
 (up to 20 details plus the total). Discovery supports at most 10,000 matching
 files; search scans at most 20 MB per call. Narrow the pattern when needed.
 

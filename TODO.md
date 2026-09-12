@@ -31,6 +31,8 @@ real change. Completed work stays listed so the project history remains clear.
 
 - [ ] Add optional filename-plus-content search filters and a clearly bounded
   multi-line query mode.
+- [x] Add a content snapshot version to search paging so offsets remain stable
+  across calls or fail with `stale_version`.
 - [x] Add bounded Python/Rope definition/reference navigation with an explicit
   static-completeness warning; keep literal search as the reliable fallback.
 - [ ] Expand renaming beyond Python/Rope where a backend can state its guarantees,
