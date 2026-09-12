@@ -10,8 +10,10 @@ Keep the core usable without optional dependencies or project-code execution.
 - `src/comfyedit/discovery.py`: file inventory and bounded literal search.
 - `src/comfyedit/cli.py`: shared dispatch and JSON stdin/stdout interface.
 - `src/comfyedit/server.py`: concrete MCP schemas; delegates to shared dispatch.
+- `TODO.md`: reviewer-driven work queue; update statuses as concerns are addressed.
 - `tests/`: engine, lifecycle/recovery, discovery, CLI subprocess, and MCP tests.
 - `docs/agent-guide.md`: using ComfyEdit to edit another repository.
+- `docs/mcp-reference.md`: compact public tool and argument reference.
 
 ## Development loop
 
@@ -40,3 +42,5 @@ dependencies are absent. Use temporary projects for destructive test scenarios.
   Exercise real CLI/MCP boundaries when changing their public contracts.
 - Keep documentation, schemas, recovery instructions, and error codes aligned.
   `plan_id` is an edit-preview receipt; use “preview” in prose and examples.
+- MCP transport errors (`isError`) and application errors (`ok: false`) are
+  separate layers; document and test both when changing public tools.

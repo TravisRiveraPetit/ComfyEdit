@@ -410,6 +410,39 @@ class Editor(DiscoveryMixin):
                     **diff_page(plan["before"], plan["after"], offset, max_chars,
                                 plan.get("before_modes"), plan.get("after_modes"))}
 
+    def list_previews(self, include_applied=False, offset=0, limit=20):
+        """List saved edit previews so an agent can recover a lost receipt ID."""
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
+            raise EditError("invalid_range", "offset must be nonnegative; limit must be 1..100.")
+        with self.lock() as state:
+            records = []
+            for path in state.glob("*.json"):
+                if not re.fullmatch(r"[0-9a-f]{32}", path.stem) or path.is_symlink():
+                    continue
+                payload = self.load(state, path.stem)
+                if payload.get("kind") not in ({"plan", "applied"} if include_applied else {"plan"}):
+                    continue
+                records.append((path.stat().st_mtime, path.stem, payload))
+            records.sort(key=lambda item: (-item[0], item[1]))
+            selected = records[offset:offset + limit]
+            return {"ok": True, "previews": [
+                {"plan_id": identifier, "status": "applied" if payload["kind"] == "applied" else "preview",
+                 "files": sorted(payload.get("after", {})),
+                 "transaction_id": payload.get("transaction_id"), "modified_at": modified}
+                for modified, identifier, payload in selected
+            ], "next_offset": offset + limit if offset + limit < len(records) else None}
+
+    def discard_preview(self, plan_id):
+        """Discard an unapplied preview; applied transaction records remain undoable."""
+        with self.lock() as state:
+            payload = self.load(state, plan_id)
+            if payload.get("kind") != "plan" or payload.get("transaction_id"):
+                raise EditError("preview_in_use", "Only an unapplied edit preview can be discarded.")
+            path = state / (plan_id + ".json")
+            path.unlink()
+            self.sync_directory(state)
+            return {"ok": True, "status": "discarded", "plan_id": plan_id}
+
     def transaction_files(self, journal):
         files = []
         for file in journal["before"]:

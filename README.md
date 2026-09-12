@@ -10,6 +10,11 @@ inspected and recovered. No API key, model, or network service required.
 Status: **tested prototype, v0.2**. Linux and macOS; Python 3.11+. Not published
 to PyPI. Install from this repository.
 
+`plan_id` means the opaque ID of a saved edit preview. It is not an agent's
+reasoning plan. If an agent loses the ID, call `list_previews()` to find recent
+unapplied previews; call `discard_preview(plan_id)` to remove one that is no
+longer needed. Applied previews remain available for diff history and undo.
+
 ## Install
 
 From the checked-out repository:
@@ -41,11 +46,48 @@ with absolute paths on your machine. Each server is scoped to one project.
 Configuration wrappers vary by client; the command and arguments are the same.
 Only stdio is supported; ComfyEdit does not open a listening port.
 
+## First run
+
+Use a temporary project for this smoke test. After installing, start with a read:
+
+```sh
+comfyedit --root /path/to/project <<'JSON'
+{"tool":"read_code","file":"src/planner.py","max_lines":40}
+JSON
+```
+
+Copy the returned `version` into a small preview. Review `diff` (and any
+`read_diff` pages), then apply the exact saved preview:
+
+```sh
+comfyedit --root /path/to/project <<'JSON'
+{"tool":"preview","edits":[{"operation":"replace_text","file":"src/planner.py","version":"<version>","old":"timeout = 10","new":"timeout = 30"}]}
+JSON
+
+comfyedit --root /path/to/project <<'JSON'
+{"tool":"commit_edit","plan_id":"<saved-preview ID>"}
+JSON
+```
+
+The commit returns an `undo_id`. Call `undo_edit` with it, review the reverse
+preview, and commit that preview if you want to restore the original state.
+
+Use ComfyEdit when stale-write protection, complete diff review, file lifecycle
+changes, project-wide renames, or guarded undo matter. Use ordinary patch or
+terminal tools when the change is tiny, already fully visible, and does not need
+these transaction guarantees. After committing, run the project's tests with
+your normal execution tool; ComfyEdit never executes project code automatically.
+
 ## The comfortable loop
 
 Start with `list_files(pattern="*.py")` or `search_code(query="solve", pattern="*.py")`
 if you do not know the target file. See the compact [agent guide](docs/agent-guide.md)
 for tool selection and examples.
+
+For the fastest sanity check, use the [agent quick reference](docs/agent-guide.md)
+and run `examples/workflow.py`. It creates a temporary project, finds a literal,
+previews a source edit plus a new test, reads all diff pages, commits, and undoes
+the transaction.
 
 1. `read_code(file="src/planner.py", symbol="Planner.solve")` returns source,
    a SHA-256 `version`, and a qualified symbol outline. To page, pass `next_line`
@@ -62,6 +104,10 @@ specific before/after file contents, not an AI reasoning plan or a planning mode
 `commit_edit` uses that receipt to apply exactly the changes you reviewed.
 `undo_id` identifies a completed transaction; `undo_edit` turns it into a reverse
 preview with its own `plan_id`.
+
+The MCP transport can report malformed calls as `isError`; valid calls can still
+return an application payload with `ok: false`. Check both layers. The CLI always
+prints the application payload and exits 1 for `ok: false`.
 
 An edit looks like this; copy the version from the read result:
 
@@ -164,6 +210,12 @@ the tree. Both paths exclude symlinks and common dependency/build metadata
 directories; the fallback does not interpret `.gitignore`. Explicit `read_code`
 requests can still address ignored files outside protected metadata.
 
+`list_previews(include_applied=false, offset=0, limit=20)` lists saved preview
+receipts and their files. `discard_preview(plan_id)` removes only an unapplied
+preview; it refuses applied previews so transaction history remains undoable.
+Saved previews contain full before/after contents under `.comfyedit/`, so discard
+unneeded ones when working on a long-lived project.
+
 `search_code(query="literal text", pattern="*.py", max_results=50)` returns
 non-overlapping, case-sensitive, single-line literal matches with file versions,
 1-based lines/columns, and snippets of at most 240 characters. Follow `next_offset`
@@ -238,7 +290,7 @@ comfyedit --root /path/to/project <<'JSON'
 JSON
 ```
 
-All ten tools use the same fields through the CLI; add `"tool": "preview"`,
+All twelve tools use the same fields through the CLI; add `"tool": "preview"`,
 for example. Success exits 0; errors exit 1. stdout contains JSON only.
 
 ```python

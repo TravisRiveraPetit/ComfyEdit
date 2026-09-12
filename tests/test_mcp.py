@@ -28,7 +28,8 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     listed = await session.list_tools()
                     self.assertEqual({x.name for x in listed.tools},
                         {"read_code", "read_diff", "preview", "rename_symbol", "commit_edit", "undo_edit",
-                         "list_files", "search_code", "list_transactions", "recover_transaction"})
+                         "list_files", "search_code", "list_previews", "discard_preview",
+                         "list_transactions", "recover_transaction"})
                     async def call(name, args):
                         result = await session.call_tool(name, args)
                         self.assertFalse(result.isError, result)
