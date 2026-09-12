@@ -36,6 +36,14 @@ class RangeEdit(BaseEdit):
     code: str = Field(description="Replacement text")
 
 
+class InsertEdit(BaseEdit):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["insert_at"]
+    line: int = Field(ge=1, description="1-based physical line containing the insertion point")
+    column: int = Field(ge=1, description="1-based Unicode-character insertion column")
+    code: str = Field(description="Text to insert; line endings follow the target file")
+
+
 class CreateEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     operation: Literal["create_file"]
@@ -53,7 +61,7 @@ class MoveEdit(BaseEdit):
     destination: str = Field(description="Absent destination relative to the root; references are not rewritten")
 
 
-Edit = Annotated[Union[TextEdit, SymbolEdit, RangeEdit, CreateEdit, DeleteEdit, MoveEdit], Field(discriminator="operation")]
+Edit = Annotated[Union[TextEdit, SymbolEdit, RangeEdit, InsertEdit, CreateEdit, DeleteEdit, MoveEdit], Field(discriminator="operation")]
 
 
 def create_server(root):
@@ -63,7 +71,7 @@ def create_server(root):
         "not source edits; commit_edit applies them. Batch related edits into one preview. "
         "All paths are relative to the configured root. Python symbols are qualified names. "
         "If a preview has next_offset, use read_diff to review the remaining diff before committing. "
-        "preview supports replace_range, create_file, delete_file, and move_file in ordered batches. "
+        "preview supports replace_range, insert_at, create_file, delete_file, and move_file in ordered batches. "
         "For read_code paging, pass next_line as start_line, next_column as start_column, and the original version. "
         "Undo returns a preview and refuses to overwrite subsequent edits. "
         "If recovery_required occurs, list_transactions then recover_transaction with rollback or finish. "

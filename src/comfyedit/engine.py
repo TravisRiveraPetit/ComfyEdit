@@ -58,6 +58,12 @@ def position_offset(source, line, column):
     return sum(len(item) for item in lines[:line - 1]) + column - 1
 
 
+def normalize_newlines(code, source):
+    """Use the existing file's line-ending convention for inserted text."""
+    newline = "\r\n" if "\r\n" in source else "\r" if "\r" in source else "\n"
+    return code.replace("\r\n", "\n").replace("\r", "\n").replace("\n", newline)
+
+
 def diff_chunks(before, after, before_modes=None, after_modes=None):
     before_modes, after_modes = before_modes or {}, after_modes or {}
     for file, source in after.items():
@@ -353,7 +359,14 @@ class Editor(DiscoveryMixin):
                     end = position_offset(source, edit["end_line"], edit["end_column"])
                     if end <= start:
                         raise EditError("invalid_range", "replace_range end must be after its start.", file=file)
-                    after[file] = source[:start] + edit["code"] + source[end:]
+                    after[file] = source[:start] + normalize_newlines(edit["code"], source) + source[end:]
+                    continue
+                if op == "insert_at":
+                    values = [edit.get(key) for key in ("line", "column")]
+                    if any(type(value) is not int for value in values):
+                        raise EditError("invalid_range", "insert_at coordinates must be integers.", file=file)
+                    offset = position_offset(source, edit["line"], edit["column"])
+                    after[file] = source[:offset] + normalize_newlines(edit["code"], source) + source[offset:]
                     continue
                 if op == "replace_text":
                     old = edit["old"]

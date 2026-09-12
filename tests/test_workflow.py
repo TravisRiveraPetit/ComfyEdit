@@ -143,6 +143,38 @@ class WorkflowTests(unittest.TestCase):
         self.assert_error("invalid_range", self.editor.preview,
                           [dict(base, start_line=1, start_column=3, end_line=1, end_column=2)])
 
+    def test_insert_at_supports_empty_files_eof_and_crlf(self):
+        empty = self.root / "empty.txt"
+        empty.write_bytes(b"")
+        empty_version = self.editor.read_code("empty.txt")["version"]
+        plan = self.editor.preview([dict(operation="insert_at", file="empty.txt", version=empty_version,
+                                          line=1, column=1, code="first\nsecond")])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertEqual(empty.read_text(), "first\nsecond")
+
+        path = self.root / "lines.txt"
+        path.write_bytes(b"a\r\nb\r\n")
+        version = self.editor.read_code("lines.txt")["version"]
+        plan = self.editor.preview([dict(operation="insert_at", file="lines.txt", version=version,
+                                          line=3, column=1, code="c\nd")])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertEqual(path.read_bytes(), b"a\r\nb\r\nc\r\nd")
+
+    def test_insert_at_batch_coordinates_use_evolving_source_and_stale_guard(self):
+        version = self.editor.read_code("a.py")["version"]
+        plan = self.editor.preview([
+            dict(operation="insert_at", file="a.py", version=version, line=1, column=1, code="# "),
+            dict(operation="insert_at", file="a.py", version=version, line=1, column=3, code="new "),
+        ])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertEqual((self.root / "a.py").read_text(), "# new value = 1\n")
+
+        current = self.editor.read_code("a.py")["version"]
+        pending = self.editor.preview([dict(operation="insert_at", file="a.py", version=current,
+                                             line=1, column=1, code="stale ")])
+        (self.root / "a.py").write_text("value = 9\n")
+        self.assert_error("stale_version", self.editor.commit_edit, pending["plan_id"])
+
     def test_create_then_delete_is_no_change(self):
         plan = self.editor.preview([dict(operation="create_file", file="new.py", code="x = 1\n"),
                                    dict(operation="delete_file", file="new.py", version=None)])

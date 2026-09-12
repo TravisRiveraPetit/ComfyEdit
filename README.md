@@ -163,6 +163,18 @@ the start is inclusive and the end is exclusive, and the range may span lines:
 This is still preview-only until you call `commit_edit`; the same version guard,
 diff review, and undo transaction apply.
 
+To insert without selecting text, use `insert_at` with a 1-based line and
+Unicode-character column. `line=1, column=1` inserts at the beginning; for an
+empty file or end-of-file, use the position immediately after the final line
+(`line = number of physical lines + 1`, `column = 1`). Inserted line endings are
+normalized to the target file's existing style. In an ordered batch, each later
+operation sees the text produced by earlier operations, while every `version`
+still names the file before the batch.
+
+```json
+{"operation":"insert_at","file":"src/parser.py","version":"<version from read_code>","line":12,"column":1,"code":"# Fast path\n"}
+```
+
 For a semantic Python rename:
 
 ```json

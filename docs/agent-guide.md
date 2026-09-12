@@ -63,6 +63,16 @@ start is inclusive and the end is exclusive, so the range may cross lines:
 {"operation":"replace_range","file":"src/parser.py","version":"<read version>","start_line":12,"start_column":5,"end_line":15,"end_column":1,"code":"return parse_fast(value)\n"}
 ```
 
+Use `insert_at` for an empty selection, including append. It takes `line` and
+`column` with the same coordinates; `line=1,column=1` is the start of the file,
+and `line=physical_line_count+1,column=1` is EOF. Inserted newlines follow the
+target file's style. Later edits in one batch use the source produced by earlier
+edits, even though all edits carry the original file version.
+
+```json
+{"operation":"insert_at","file":"src/parser.py","version":"<read version>","line":12,"column":1,"code":"# Fast path\n"}
+```
+
 ## Recover without guessing
 
 Always inspect MCP `isError` first, then inspect `ok` in the returned application

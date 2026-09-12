@@ -19,7 +19,7 @@ real change. Completed work stays listed so the project history remains clear.
 
 - [x] Add a line-range edit primitive so changing a small block does not require
   reconstructing an entire Python symbol.
-- [ ] Add an explicit append/insert-at-location operation with clear line and
+- [x] Add an explicit append/insert-at-location operation with clear line and
   column guards.
 - [ ] Add opt-in regex and multi-line search/replacement, with match previews and
   the same stale-version contract as literal replacement.

@@ -20,7 +20,7 @@ an application payload exists. Check both.
 | `list_transactions` | `include_completed`, `offset`, `limit` | Pending/recoverable transaction states |
 | `recover_transaction` | `transaction_id`, `action` = `rollback` or `finish` | Direct guarded recovery of a pending transaction |
 
-Edit objects use `replace_text`, `replace_range`, `replace_symbol`, `insert_before`,
+Edit objects use `replace_text`, `replace_range`, `insert_at`, `replace_symbol`, `insert_before`,
 `insert_after`, `create_file`, `move_file`, or `delete_file`. Existing paths use
 the version read before the batch; a path absent before the batch uses
 `version: null` when it is created or populated by a move. `create_file` has no
@@ -28,8 +28,14 @@ version field. `plan_id` is a saved edit-preview receipt, not agent reasoning.
 
 `replace_range` selects a half-open range using 1-based physical line and
 Unicode-character columns: `start` is included and `end` is excluded. It can
-span lines and preserves the surrounding file's line endings. For example:
+span lines and normalizes inserted line endings to the surrounding file's style.
+For example:
 
 ```json
 {"operation":"replace_range","file":"notes.txt","version":"<read version>","start_line":4,"start_column":1,"end_line":6,"end_column":1,"code":"updated\ntext\n"}
 ```
+
+`insert_at` uses `line` and `column` for an empty insertion point. Position
+`line=1,column=1` is the beginning; `line=physical_line_count+1,column=1` is EOF.
+Coordinates for later edits in an ordered batch are evaluated against the text
+produced by earlier edits, while versions still refer to the original source.
