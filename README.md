@@ -2,12 +2,12 @@
 
 **An agent should spend its context on the change, not on escaping shell commands.**
 
-ComfyEdit is a local code editor for coding agents. It exposes six MCP tools
-and a JSON CLI: read source, preview edits, inspect complete diffs, rename a
-Python symbol, commit a preview, and undo a transaction. No API key, model, or
-network service required.
+ComfyEdit is a local editing workspace for coding agents. Find code, read bounded
+source pages, preview a batch of edits, and apply or undo it with version checks.
+Batches can create, move, delete, and edit files. Interrupted transactions can be
+inspected and recovered. No API key, model, or network service required.
 
-Status: **tested prototype, v0.1**. Linux and macOS; Python 3.11+. Not published
+Status: **tested prototype, v0.2**. Linux and macOS; Python 3.11+. Not published
 to PyPI. Install from this repository.
 
 ## Install
@@ -43,14 +43,25 @@ Only stdio is supported; ComfyEdit does not open a listening port.
 
 ## The comfortable loop
 
+Start with `list_files(pattern="*.py")` or `search_code(query="solve", pattern="*.py")`
+if you do not know the target file. See the compact [agent guide](docs/agent-guide.md)
+for tool selection and examples.
+
 1. `read_code(file="src/planner.py", symbol="Planner.solve")` returns source,
    a SHA-256 `version`, and a qualified symbol outline. To page, pass `next_line`
-   as `start_line`, keeping the same `symbol` if supplied. Line numbers are
-   absolute within the file; symbol pages stop at the end of that definition.
-2. `preview(edits=[...])` validates an ordered batch and returns a diff and `plan_id`.
+   as `start_line` and `next_column` as `start_column`, keeping the same `symbol`
+   and `version`. Pages stop at the symbol boundary, line limit, or character
+   limit. A long line may span several pages.
+2. `preview(edits=[...])` validates an ordered batch and returns a diff and saved-preview `plan_id`.
    If `next_offset` is not null, use `read_diff` to review the remaining pages.
 3. `commit_edit(plan_id=...)` applies exactly that preview, checking input versions
    again. It returns new versions and an `undo_id`.
+
+**`plan_id` is the ID of a saved edit preview.** It is an opaque receipt for
+specific before/after file contents, not an AI reasoning plan or a planning mode.
+`commit_edit` uses that receipt to apply exactly the changes you reviewed.
+`undo_id` identifies a completed transaction; `undo_edit` turns it into a reverse
+preview with its own `plan_id`.
 
 An edit looks like this; copy the version from the read result:
 
@@ -97,8 +108,8 @@ For a semantic Python rename:
 }
 ```
 
-Pass that to `rename_symbol`, then commit its returned plan. Rope computes the
-rename in an isolated copy of Python sources. The plan guards the whole Python
+Pass that to `rename_symbol`, then commit its returned edit preview. Rope computes
+the rename in an isolated copy of Python sources. The preview guards the whole Python
 source snapshot and inventory, including callers that might be added later.
 Static inference cannot guarantee coverage of reflection, dynamic attributes,
 or callers outside this root. Review the diff and run your project tests.
@@ -108,6 +119,91 @@ It refuses if any affected file has changed. It can undo an older transaction
 when intervening transactions touched only other files; it does not merge
 intervening edits within the same file. An undo commit itself has an undo ID.
 
+## Create, move, and delete files
+
+These operations participate in the same ordered `preview(edits=[...])` batch:
+
+```json
+{
+  "tool": "preview",
+  "edits": [
+    {"operation": "create_file", "file": "tests/test_solver.py", "code": "def test_answer():\n    assert 2 + 2 == 4\n"},
+    {"operation": "move_file", "file": "old_solver.py", "destination": "src/solver.py", "version": "<original old_solver.py version>"},
+    {"operation": "delete_file", "file": "obsolete.txt", "version": "<original obsolete.txt version>"}
+  ]
+}
+```
+
+Creation and moves require an absent destination in the batch's current state.
+Commit checks the original destination state again before any writes. Missing
+parent directories are created at commit time. Moves preserve ordinary permission
+bits and do **not** rewrite imports or references; include those edits explicitly.
+Creation defaults to mode `420` (octal `0644`); use `493` for an executable `0755`.
+
+Every version describes the path **before the whole batch**. To edit a newly
+created or newly occupied move destination in the same batch, use `version: null`
+if that path was originally absent. An existing path always uses its original
+read version. A batch cannot edit both a file path and one of its descendants.
+All resulting Python files must compile, including created and moved files.
+
+Undo reverses creations, deletions, moves, contents, and permission bits. It checks
+both contents and modes and refuses to overwrite a recreated deleted file.
+Ordinary undo may leave empty parent directories; failed commits and rollback
+recovery remove newly created directories only when they are still empty.
+
+## Discovery and bounded reads
+
+`list_files(pattern="*", offset=0, limit=100)` returns sorted relative paths,
+`next_offset`, and an inventory `version`. Pass that version on later pages to
+reject an inventory change. Patterns are case-sensitive shell globs over the
+whole relative path; `*.py` matches Python files at any depth.
+
+In Git worktrees, discovery includes tracked and non-ignored untracked files.
+Git fsmonitor hooks are disabled during discovery. Without Git, discovery walks
+the tree. Both paths exclude symlinks and common dependency/build metadata
+directories; the fallback does not interpret `.gitignore`. Explicit `read_code`
+requests can still address ignored files outside protected metadata.
+
+`search_code(query="literal text", pattern="*.py", max_results=50)` returns
+non-overlapping, case-sensitive, single-line literal matches with file versions,
+1-based lines/columns, and snippets of at most 240 characters. Follow `next_offset`
+for more matches. Results are live, not a cross-file snapshot: restart the search
+if the workspace changes while paging. Unsupported files are reported in `skipped`
+(up to 20 details plus the total). Discovery supports at most 10,000 matching
+files; search scans at most 20 MB per call. Narrow the pattern when needed.
+
+`read_code` returns at most 24,000 text characters and 120 lines by default.
+Set `include_symbols=false` to omit the outline. Otherwise it returns at most
+100 symbols; follow `next_symbol_offset` using `symbol_offset` for more. Use
+`max_chars`, `max_lines`, and `max_symbols` to request smaller pages. Columns and
+character offsets count Unicode characters. Keep the original `version` while
+paging source or outlines to detect changes between calls.
+
+## Recover an interrupted transaction
+
+A journal is saved and synced before source writes. If a process exits midway,
+new commits return `recovery_required` with the pending transaction IDs.
+
+1. Call `list_transactions()` to inspect each affected file's `before`, `after`,
+   `both`, or `conflict` state. Full source contents are omitted from this result.
+2. Call `recover_transaction(transaction_id=..., action="rollback")` to restore
+   the original contents, or `action="finish"` to finish the saved changes.
+3. A finished transaction returns an `undo_id`. A rollback makes its original
+   preview available to retry, subject to its original guards.
+
+Recovery **writes directly**, using the exact states already recorded in the
+journal. It checks all affected files before writing and refuses if any file
+matches neither recorded state. Resolve those conflicts explicitly; recovery
+never guesses or merges them. Finishing also rechecks unchanged input guards and
+any Python rename inventory guard; rollback can still restore the affected files
+when an unrelated dependency changed. If recovery itself is interrupted, inspect and
+retry. `list_transactions(include_completed=true)` also lists undoable and
+rolled-back transactions, with `offset`/`limit` paging.
+
+This is recoverability, not multi-file crash atomicity. Other programs can observe
+partial changes, and durable writes depend on the filesystem honoring `fsync`.
+Corrupt or missing journals require manual inspection; preserve `.comfyedit/`.
+
 ## Review the complete diff
 
 Previews include at most 24,000 Unicode characters of diff, plus `total_chars`
@@ -116,7 +212,7 @@ and `next_offset`. Continue from that offset to inspect every proposed change:
 ```json
 {
   "tool": "read_diff",
-  "plan_id": "<plan_id from preview, rename_symbol, or undo_edit>",
+  "plan_id": "<saved-preview ID from preview, rename_symbol, or undo_edit>",
   "offset": 24000,
   "max_chars": 12000
 }
@@ -142,7 +238,7 @@ comfyedit --root /path/to/project <<'JSON'
 JSON
 ```
 
-All six tools use the same fields through the CLI; add `"tool": "preview"`,
+All ten tools use the same fields through the CLI; add `"tool": "preview"`,
 for example. Success exits 0; errors exit 1. stdout contains JSON only.
 
 ```python
@@ -150,9 +246,10 @@ from comfyedit import Editor
 
 editor = Editor("/path/to/project")
 read = editor.read_code("planner.py", symbol="Planner.solve")
-plan = editor.rename_symbol("planner.py", "Planner.solve", "find_plan", read["version"])
-print(plan["diff"])
-result = editor.commit_edit(plan["plan_id"])
+preview = editor.rename_symbol("planner.py", "Planner.solve", "find_plan", read["version"])
+print(preview["diff"])
+# Fetch remaining diff pages if preview["next_offset"] is not None.
+result = editor.commit_edit(preview["plan_id"])
 ```
 
 ## Errors agents can act on
@@ -170,30 +267,38 @@ and message. MCP clients must inspect `ok` in the tool payload.
 | `missing_dependency` | Install the appropriate optional extra. |
 | `invalid_range` | Use the returned paging cursor and keep page sizes within the documented limits. |
 | `invalid_plan` | Pass the `plan_id` from a preview rather than an `undo_id`. |
+| `file_exists` | Choose an absent destination or explicitly edit/delete the existing file. |
+| `path_conflict` | Separate operations that turn a file into a directory or vice versa. |
+| `recovery_required` | Inspect `list_transactions`, then finish or roll back the pending transaction. |
+| `recovery_conflict` | Inspect external changes; recovery has refused to overwrite them. |
+| `search_too_large` | Narrow the file pattern. |
+| `invalid_state` | Preserve the metadata and inspect the reported record for corruption. |
 
 ## Guarantees and limits
 
-- Source is never executed. Changed Python files must compile before a plan is
-  saved. This is a syntax check, not type checking or behavioral validation.
+- Source is never executed. New edit previews require resulting Python files to
+  compile. This is a syntax check, not type checking or behavioral validation.
+  Undo restores recorded originals even when they originally had syntax errors.
 - All input hashes are checked before writes. An advisory project lock
   serializes ComfyEdit processes. External editors do not take this lock: use
   separate worktrees for concurrent independent agents.
 - Each file replacement is atomic and preserves ordinary permission bits.
   A caught write failure attempts rollback of already-written files.
   **Multi-file commits are not crash-atomic.** A process/OS crash can leave a
-  partially applied transaction; journals remain for manual recovery.
+  partially applied transaction; use the guarded recovery tools described above.
 - `.comfyedit/` stores full before/after contents and versions locally. It is
   ignored in this repo; add `.comfyedit/` to other projects' `.gitignore` files.
   Keep it private like the source itself. Removing it discards previews and undo.
 - Paths must stay within the configured root; symlink paths and `.git` are
   rejected. This is a cooperative local tool, not a sandbox against malicious
   processes changing paths or metadata concurrently.
-- Existing UTF-8 files only, at most 2 MB each. Rename supports at most 2,000
+- UTF-8 files only, at most 2 MB each. Rename supports at most 2,000
   Python files and ignores common dependency/build metadata directories.
   Diff responses are capped at 24,000 characters with an explicit truncation
   flag; `read_diff` provides the remaining pages from the saved plan.
-- No file creation/deletion, signature refactoring, reference-list tool, LSP
-  backend, Windows mutations, or automatic project test execution yet.
+- No signature refactoring, semantic reference-list tool, LSP backend, Windows
+  mutations, or automatic project test execution yet. Run project tests with your
+  normal execution tool after committing an edit.
 
 ## Development
 
@@ -203,10 +308,14 @@ and message. MCP clients must inspect `ok` in the tool payload.
 
 The tests cover file integrity, stale edits, ambiguous matches, cross-file
 renaming, undo, rollback, symbol paging, complete Unicode diff retrieval,
-JSON CLI subprocesses, and real MCP stdio communication. CI runs Python
-3.11–3.13 on Linux and Python 3.12 on macOS.
+JSON CLI subprocesses, file lifecycle operations, permission guards, actual
+process termination and recovery, and real MCP stdio communication. CI runs
+Python 3.11–3.13 on Linux, Python 3.12 on macOS, and a core-only install without
+MCP or Rope.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for API principles and extension priorities.
+Run `.venv/bin/python examples/workflow.py` for a disposable end-to-end example.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for API principles and extension priorities,
+and [AGENTS.md](AGENTS.md) for working on this repository.
 
 Built using the [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 and [Rope's refactoring API](https://rope.readthedocs.io/en/latest/library.html).

@@ -7,15 +7,18 @@ from .engine import Editor, EditError
 
 def dispatch(editor, request):
     try:
+        if not isinstance(request, dict):
+            raise EditError("invalid_request", "Request must be a JSON object.")
         request = dict(request)
         operation = request.pop("tool")
-        allowed = {"read_code", "read_diff", "preview", "rename_symbol", "commit_edit", "undo_edit"}
+        allowed = {"read_code", "read_diff", "preview", "rename_symbol", "commit_edit", "undo_edit",
+                   "list_files", "search_code", "list_transactions", "recover_transaction"}
         if operation not in allowed:
             raise EditError("unknown_tool", "Choose a supported tool.", tools=sorted(allowed))
         return getattr(editor, operation)(**request)
     except EditError as e:
         return e.result()
-    except (KeyError, TypeError, ValueError) as e:
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
         return EditError("invalid_request", str(e)).result()
     except SyntaxError as e:
         return EditError("syntax_error", e.msg, line=e.lineno).result()
