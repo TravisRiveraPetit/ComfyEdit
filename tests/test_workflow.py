@@ -120,6 +120,29 @@ class WorkflowTests(unittest.TestCase):
         self.editor.commit_edit(plan["plan_id"])
         self.assertEqual((self.root / "new.py").read_text(), "value = 2\n")
 
+    def test_replace_range_handles_unicode_and_multiline_boundaries(self):
+        path = self.root / "notes.txt"
+        path.write_bytes("😀 first\r\nsecond line\r\nthird".encode())
+        version = self.editor.read_code("notes.txt")["version"]
+        plan = self.editor.preview([dict(
+            operation="replace_range", file="notes.txt", version=version,
+            start_line=1, start_column=3, end_line=2, end_column=7,
+            code="new\r\nrow",
+        )])
+        self.assertIn("new", plan["diff"])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertEqual(path.read_bytes(), "😀 new\r\nrow line\r\nthird".encode())
+
+    def test_replace_range_rejects_invalid_coordinates(self):
+        version = self.editor.read_code("a.py")["version"]
+        base = dict(operation="replace_range", file="a.py", version=version,
+                    start_line=1, start_column=1, end_line=1, end_column=2, code="x")
+        for key, value in (("start_line", 0), ("start_column", 99), ("end_line", 0)):
+            edit = dict(base, **{key: value})
+            self.assert_error("invalid_range", self.editor.preview, [edit])
+        self.assert_error("invalid_range", self.editor.preview,
+                          [dict(base, start_line=1, start_column=3, end_line=1, end_column=2)])
+
     def test_create_then_delete_is_no_change(self):
         plan = self.editor.preview([dict(operation="create_file", file="new.py", code="x = 1\n"),
                                    dict(operation="delete_file", file="new.py", version=None)])

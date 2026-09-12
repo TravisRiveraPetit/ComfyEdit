@@ -17,7 +17,7 @@ real change. Completed work stays listed so the project history remains clear.
 
 ## Editing power
 
-- [ ] Add a line-range edit primitive so changing a small block does not require
+- [x] Add a line-range edit primitive so changing a small block does not require
   reconstructing an entire Python symbol.
 - [ ] Add an explicit append/insert-at-location operation with clear line and
   column guards.

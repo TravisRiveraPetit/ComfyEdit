@@ -26,6 +26,16 @@ class SymbolEdit(BaseEdit):
     code: str = Field(description="Complete replacement or insertion. Dedented automatically to the symbol's indentation. Replacement includes decorators.")
 
 
+class RangeEdit(BaseEdit):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["replace_range"]
+    start_line: int = Field(ge=1, description="1-based physical line containing the first selected character")
+    start_column: int = Field(ge=1, description="1-based Unicode-character start column, inclusive")
+    end_line: int = Field(ge=1, description="1-based physical line containing the exclusive end position")
+    end_column: int = Field(ge=1, description="1-based Unicode-character end column, exclusive")
+    code: str = Field(description="Replacement text")
+
+
 class CreateEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     operation: Literal["create_file"]
@@ -43,7 +53,7 @@ class MoveEdit(BaseEdit):
     destination: str = Field(description="Absent destination relative to the root; references are not rewritten")
 
 
-Edit = Annotated[Union[TextEdit, SymbolEdit, CreateEdit, DeleteEdit, MoveEdit], Field(discriminator="operation")]
+Edit = Annotated[Union[TextEdit, SymbolEdit, RangeEdit, CreateEdit, DeleteEdit, MoveEdit], Field(discriminator="operation")]
 
 
 def create_server(root):
@@ -53,7 +63,7 @@ def create_server(root):
         "not source edits; commit_edit applies them. Batch related edits into one preview. "
         "All paths are relative to the configured root. Python symbols are qualified names. "
         "If a preview has next_offset, use read_diff to review the remaining diff before committing. "
-        "preview supports create_file, delete_file, and move_file in ordered batches. "
+        "preview supports replace_range, create_file, delete_file, and move_file in ordered batches. "
         "For read_code paging, pass next_line as start_line, next_column as start_column, and the original version. "
         "Undo returns a preview and refuses to overwrite subsequent edits. "
         "If recovery_required occurs, list_transactions then recover_transaction with rollback or finish. "

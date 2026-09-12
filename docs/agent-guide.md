@@ -55,6 +55,14 @@ Each line above is a separate edit object; pass the desired objects in one
 its decorators. Exact text replacement defaults to one match; additional matches
 require an explicit `expected_matches` count.
 
+For an exact location when the text is awkward to quote, use `replace_range`.
+Coordinates are 1-based physical lines and Unicode-character columns; the
+start is inclusive and the end is exclusive, so the range may cross lines:
+
+```json
+{"operation":"replace_range","file":"src/parser.py","version":"<read version>","start_line":12,"start_column":5,"end_line":15,"end_column":1,"code":"return parse_fast(value)\n"}
+```
+
 ## Recover without guessing
 
 Always inspect MCP `isError` first, then inspect `ok` in the returned application

@@ -41,6 +41,23 @@ def source_lines(source):
     return io.StringIO(source, newline="").readlines()
 
 
+def position_offset(source, line, column):
+    """Convert a 1-based physical line/column to a character offset."""
+    lines = source_lines(source)
+    if not lines:
+        if line == 1 and column == 1:
+            return 0
+        raise EditError("invalid_range", "The empty file only has position line 1, column 1.")
+    if line == len(lines) + 1 and column == 1:
+        return len(source)
+    if line < 1 or line > len(lines):
+        raise EditError("invalid_range", "Line is outside the file.", line=line, total_lines=len(lines))
+    if column < 1 or column > len(lines[line - 1]) + 1:
+        raise EditError("invalid_range", "Column is outside the selected physical line.",
+                        line=line, column=column, line_length=len(lines[line - 1]))
+    return sum(len(item) for item in lines[:line - 1]) + column - 1
+
+
 def diff_chunks(before, after, before_modes=None, after_modes=None):
     before_modes, after_modes = before_modes or {}, after_modes or {}
     for file, source in after.items():
@@ -327,6 +344,16 @@ class Editor(DiscoveryMixin):
                         raise EditError("file_exists", "Move requires an absent destination.", file=destination)
                     after[destination], after_modes[destination] = source, after_modes[file]
                     after[file], after_modes[file] = None, None
+                    continue
+                if op == "replace_range":
+                    values = [edit.get(key) for key in ("start_line", "start_column", "end_line", "end_column")]
+                    if any(type(value) is not int for value in values):
+                        raise EditError("invalid_range", "replace_range coordinates must be integers.", file=file)
+                    start = position_offset(source, edit["start_line"], edit["start_column"])
+                    end = position_offset(source, edit["end_line"], edit["end_column"])
+                    if end <= start:
+                        raise EditError("invalid_range", "replace_range end must be after its start.", file=file)
+                    after[file] = source[:start] + edit["code"] + source[end:]
                     continue
                 if op == "replace_text":
                     old = edit["old"]

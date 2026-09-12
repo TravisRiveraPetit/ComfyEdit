@@ -51,7 +51,7 @@ Only stdio is supported; ComfyEdit does not open a listening port.
 Use a temporary project for this smoke test. After installing, start with a read:
 
 ```sh
-comfyedit --root /path/to/project <<'JSON'
+.venv/bin/comfyedit --root /path/to/project <<'JSON'
 {"tool":"read_code","file":"src/planner.py","max_lines":40}
 JSON
 ```
@@ -60,11 +60,11 @@ Copy the returned `version` into a small preview. Review `diff` (and any
 `read_diff` pages), then apply the exact saved preview:
 
 ```sh
-comfyedit --root /path/to/project <<'JSON'
+.venv/bin/comfyedit --root /path/to/project <<'JSON'
 {"tool":"preview","edits":[{"operation":"replace_text","file":"src/planner.py","version":"<version>","old":"timeout = 10","new":"timeout = 30"}]}
 JSON
 
-comfyedit --root /path/to/project <<'JSON'
+.venv/bin/comfyedit --root /path/to/project <<'JSON'
 {"tool":"commit_edit","plan_id":"<saved-preview ID>"}
 JSON
 ```
@@ -142,6 +142,26 @@ For any UTF-8 file, use an exact replacement:
 The default is exactly one match. More matches require an explicit count.
 Edits in a batch run in order; every version refers to the original file,
 including when several edits target the same file.
+
+When you know the exact location but quoting the old text is inconvenient, use
+`replace_range`. It uses 1-based physical lines and Unicode-character columns;
+the start is inclusive and the end is exclusive, and the range may span lines:
+
+```json
+{
+  "operation": "replace_range",
+  "file": "src/parser.py",
+  "version": "<version from read_code>",
+  "start_line": 12,
+  "start_column": 5,
+  "end_line": 15,
+  "end_column": 1,
+  "code": "return parse_fast(value)\n"
+}
+```
+
+This is still preview-only until you call `commit_edit`; the same version guard,
+diff review, and undo transaction apply.
 
 For a semantic Python rename:
 
@@ -285,7 +305,7 @@ Files without a final newline are marked explicitly in the diff.
 Avoid shell escaping by supplying JSON on stdin:
 
 ```sh
-comfyedit --root /path/to/project <<'JSON'
+.venv/bin/comfyedit --root /path/to/project <<'JSON'
 {"tool": "read_code", "file": "src/planner.py", "symbol": "Planner.solve"}
 JSON
 ```
