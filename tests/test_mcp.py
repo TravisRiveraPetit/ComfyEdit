@@ -29,7 +29,7 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual({x.name for x in listed.tools},
                         {"read_code", "read_diff", "preview", "rename_symbol", "commit_edit", "undo_edit",
                          "list_files", "search_code", "list_previews", "discard_preview",
-                         "list_transactions", "recover_transaction", "validate"})
+                         "list_transactions", "recover_transaction", "validate", "find_references"})
                     async def call(name, args):
                         result = await session.call_tool(name, args)
                         self.assertFalse(result.isError, result)
@@ -67,6 +67,8 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     validation = await call("validate", {"command": [sys.executable, "-c", "print('mcp ok')"]})
                     self.assertEqual(validation["status"], "passed")
                     self.assertEqual(validation["stdout"], "mcp ok\n")
+                    references = await call("find_references", {"file": "demo.py", "symbol": "answer", "version": r["version"]})
+                    self.assertEqual(references["references"][0]["kind"], "definition")
                     created = await call("preview", {"edits": [
                         {"operation": "create_file", "file": "new.py", "code": "x = 1\n"},
                         {"operation": "move_file", "file": "new.py", "version": None, "destination": "src/moved.py"},

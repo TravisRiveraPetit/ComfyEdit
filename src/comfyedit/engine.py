@@ -72,6 +72,17 @@ def normalize_newlines(code, source):
     return code.replace("\r\n", "\n").replace("\r", "\n").replace("\n", newline)
 
 
+def offset_position(source, offset):
+    """Convert a character offset to a physical line and Unicode column."""
+    cursor = 0
+    lines = source_lines(source)
+    for line_number, line in enumerate(lines, 1):
+        if cursor <= offset < cursor + len(line):
+            return line_number, offset - cursor + 1
+        cursor += len(line)
+    return len(lines) + 1, 1
+
+
 def diff_chunks(before, after, before_modes=None, after_modes=None):
     before_modes, after_modes = before_modes or {}, after_modes or {}
     for file, source in after.items():
@@ -801,3 +812,67 @@ class Editor(DiscoveryMixin):
                 plan["python_inventory"] = inventory
                 self.save(state, result["plan_id"], plan)
             return result
+
+    def find_references(self, file, symbol, version, offset=0, limit=100, inventory_version=None):
+        """Find statically resolved Python references without proposing a mutation."""
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 200:
+            raise EditError("invalid_range", "offset must be nonnegative; limit must be 1..200.")
+        self.python_only(file)
+        try:
+            from rope.base.project import Project
+            from rope.refactor import occurrences
+            from rope.refactor.rename import Rename
+        except ImportError:
+            raise EditError("missing_dependency", "Install Python refactoring support: pip install '.[python]'")
+        with self.lock() as state, tempfile.TemporaryDirectory(prefix="comfyedit-references-") as tmp:
+            inventory = self.python_files()
+            if len(inventory) > 2000:
+                raise EditError("project_too_large", "Reference search currently supports at most 2,000 Python files.")
+            current_inventory_version = digest("\0".join(inventory).encode())
+            if inventory_version is not None and inventory_version != current_inventory_version:
+                raise EditError("stale_version", "Python file inventory changed; restart reference search.",
+                                current_version=current_inventory_version)
+            before = {f: self.read_bytes(f).decode() for f in inventory}
+            if file not in before or digest(before[file].encode()) != version:
+                raise EditError("stale_version", "Read the source again before finding references.", file=file)
+            _, _, _, node = select(before[file], symbol)
+            lines = source_lines(before[file])
+            match = re.search(r"\b(?:def|class)\s+(" + re.escape(node.name) + r")\b", lines[node.lineno - 1])
+            if match is None:
+                raise EditError("symbol_not_found", "Could not locate the selected definition in its source line.", symbol=symbol)
+            source_offset = sum(map(len, lines[:node.lineno - 1])) + match.start(1)
+            for name, source in before.items():
+                path = Path(tmp) / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(source.encode())
+            project = Project(tmp, ropefolder=None)
+            try:
+                resource = project.get_resource(file)
+                rename = Rename(project, resource, source_offset)
+                finder = occurrences.create_finder(project, rename.old_name, rename.old_pyname, docs=False)
+                references = []
+                for python_resource in project.get_python_files():
+                    resource_path = Path(python_resource.path)
+                    relative = (resource_path.relative_to(Path(tmp)).as_posix()
+                                if resource_path.is_absolute() else resource_path.as_posix())
+                    source = before[relative]
+                    for occurrence in finder.find_occurrences(resource=python_resource):
+                        start, end = occurrence.get_word_range()
+                        line_number, column = offset_position(source, start)
+                        end_line, end_column = offset_position(source, end)
+                        kind = ("definition" if occurrence.is_defined() else "call" if occurrence.is_called()
+                                else "write" if occurrence.is_written() else "import" if occurrence.is_in_import_statement()
+                                else "reference")
+                        references.append({"file": relative, "version": content_version(source),
+                                           "line": line_number, "column": column,
+                                           "end_line": end_line, "end_column": end_column, "kind": kind,
+                                           "unsure": occurrence.is_unsure()})
+            finally:
+                project.close()
+            references.sort(key=lambda item: (item["file"], item["line"], item["column"]))
+            selected = references[offset:offset + limit]
+            return {"ok": True, "file": file, "symbol": symbol, "references": selected,
+                    "offset": offset, "next_offset": offset + limit if offset + limit < len(references) else None,
+                    "total": len(references), "inventory_version": current_inventory_version,
+                    "complete": False,
+                    "warnings": ["Rope uses static inference; dynamic attributes, reflection, and external callers may be missed."]}

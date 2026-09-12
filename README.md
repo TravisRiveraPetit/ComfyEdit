@@ -34,6 +34,17 @@ file, the commit fails safely and you reread the files.
 
 ### Rename a Python symbol everywhere Rope can resolve it
 
+Before changing a common symbol, inspect the statically resolved references:
+
+```json
+{"tool":"find_references","file":"src/parser.py","symbol":"Parser.parse","version":"<version>"}
+```
+
+The result is paged and labels definitions, calls, imports, writes, and other
+references. It includes each file's current version and an explicit
+`complete: false` warning because dynamic attributes, reflection, and callers
+outside the project root cannot be proven by static inference.
+
 ```json
 {"tool":"rename_symbol","file":"src/parser.py","symbol":"Parser.parse","new_name":"parse_fast","version":"<version>"}
 ```
@@ -367,7 +378,7 @@ Avoid shell escaping by supplying JSON on stdin:
 JSON
 ```
 
-All thirteen tools use the same fields through the CLI; add `"tool": "preview"`,
+All fourteen tools use the same fields through the CLI; add `"tool": "preview"`,
 for example. Success exits 0; errors exit 1. stdout contains JSON only.
 
 ```python
@@ -427,9 +438,10 @@ and message. MCP clients must inspect `ok` in the tool payload.
   Python files and ignores common dependency/build metadata directories.
   Diff responses are capped at 24,000 characters with an explicit truncation
   flag; `read_diff` provides the remaining pages from the saved plan.
-- No signature refactoring, semantic reference-list tool, LSP backend, or
-  Windows mutations yet. Validation is explicit and bounded; it is never run
-  automatically after an edit.
+- No signature refactoring or LSP backend yet; semantic references currently
+  support Python/Rope only, and mutations are unsupported on Windows.
+  Validation is explicit and bounded; it is never run automatically after an
+  edit.
 
 For maintainers, contributor guidance, test commands, and implementation
 invariants are in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and

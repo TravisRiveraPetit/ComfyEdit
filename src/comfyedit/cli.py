@@ -13,7 +13,7 @@ def dispatch(editor, request):
         operation = request.pop("tool")
         allowed = {"read_code", "read_diff", "preview", "rename_symbol", "commit_edit", "undo_edit",
                    "list_files", "search_code", "list_previews", "discard_preview",
-                   "list_transactions", "recover_transaction", "validate"}
+                   "list_transactions", "recover_transaction", "validate", "find_references"}
         if operation not in allowed:
             raise EditError("unknown_tool", "Choose a supported tool.", tools=sorted(allowed))
         return getattr(editor, operation)(**request)

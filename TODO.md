@@ -31,8 +31,8 @@ real change. Completed work stays listed so the project history remains clear.
 
 - [ ] Add optional filename-plus-content search filters and a clearly bounded
   multi-line query mode.
-- [ ] Add semantic definition/reference navigation behind negotiated language
-  backends (LSP where available); keep literal search as the reliable fallback.
+- [x] Add bounded Python/Rope definition/reference navigation with an explicit
+  static-completeness warning; keep literal search as the reliable fallback.
 - [ ] Expand renaming beyond Python/Rope where a backend can state its guarantees,
   including module/file renames and explicit dynamic-reference limitations.
 

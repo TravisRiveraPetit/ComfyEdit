@@ -13,6 +13,7 @@ use `validate` when you want bounded test/lint output in the same project root.
 | Inspect a target and get its version | `read_code(file="src/solver.py", symbol="Solver.solve")` |
 | Stage edits, including file creation/moves/deletion | `preview(edits=[...])` |
 | Rename a Python definition and inferred callers | `rename_symbol(file, symbol, new_name, version)` |
+| Inspect resolved Python references | `find_references(file, symbol, version)` |
 | Inspect remaining preview text | `read_diff(plan_id, offset=next_offset)` |
 | Recover a lost preview receipt | `list_previews()` |
 | Remove an unused preview | `discard_preview(plan_id)` |

@@ -15,6 +15,7 @@ an application payload exists. Check both.
 | `list_previews` | `include_applied`, `offset`, `limit` | Saved preview receipts and file summaries |
 | `discard_preview` | Unapplied `plan_id` | Removes one unused preview receipt |
 | `rename_symbol` | Python `file`, qualified `symbol`, `new_name`, source `version` | Saved edit-preview receipt and diff |
+| `find_references` | Python `file`, qualified `symbol`, source `version`, optional paging/inventory guard | Paged static references with line/column ranges, kinds, versions, and completeness warning |
 | `commit_edit` | Saved-preview `plan_id` | Applies it; returns transaction `undo_id` |
 | `undo_edit` | Transaction `undo_id` | Saved reverse edit preview; review and commit it |
 | `list_transactions` | `include_completed`, `offset`, `limit` | Pending/recoverable transaction states |
