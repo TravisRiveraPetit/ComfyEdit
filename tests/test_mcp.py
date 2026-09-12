@@ -58,6 +58,16 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     undo = await call("undo_edit", {"undo_id": result["undo_id"]})
                     await call("commit_edit", {"plan_id": undo["plan_id"]})
                     self.assertEqual(source.read_text(), "def answer():\n    return 1\n")
+                    regex_read = await call("read_code", {"file": "demo.py"})
+                    regex_plan = await call("preview", {"edits": [{
+                        "operation": "replace_regex", "file": "demo.py", "version": regex_read["version"],
+                        "pattern": "return (\\d+)", "replacement": "return \\g<1> + 0",
+                        "expected_matches": 1}]})
+                    self.assertEqual(regex_plan["match_reports"][0]["edit_index"], 0)
+                    regex_result = await call("commit_edit", {"plan_id": regex_plan["plan_id"]})
+                    self.assertIn("return 1 + 0", source.read_text())
+                    regex_undo = await call("undo_edit", {"undo_id": regex_result["undo_id"]})
+                    await call("commit_edit", {"plan_id": regex_undo["plan_id"]})
                     error = await call("read_code", {"file": "missing.py"})
                     self.assertEqual(error["error"]["code"], "missing_file")
                     files = await call("list_files", {"pattern": "*.py"})

@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -141,6 +142,7 @@ class WorkflowTests(unittest.TestCase):
                                           pattern=r"name=(\w+)", replacement=r"user=\1",
                                           expected_matches=2)])
         report = plan["match_reports"][0]
+        self.assertEqual(report["edit_index"], 0)
         self.assertEqual((report["count"], report["shown"], report["truncated"]), (2, 2, False))
         self.assertEqual((report["matches"][0]["start_line"], report["matches"][0]["start_column"]), (1, 1))
         self.assertIn("-name=alice", plan["diff"])
@@ -148,6 +150,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(path.read_text(), "user=alice\nuser=bob\n")
         persisted = self.editor.read_diff(plan["plan_id"])
         self.assertEqual(persisted["match_reports"], plan["match_reports"])
+        self.assertNotIn("match_reports", self.editor.read_diff(plan["plan_id"], offset=1))
 
     def test_replace_regex_requires_explicit_multiline_opt_in(self):
         path = self.root / "block.txt"
@@ -169,6 +172,33 @@ class WorkflowTests(unittest.TestCase):
             self.editor.preview([dict(operation="replace_regex", file="hostile.txt", version=version,
                                       pattern=r"(a+)+$", replacement="safe")])
         self.assertEqual(caught.exception.code, "regex_timeout")
+
+    def test_replace_regex_timeout_also_applies_in_worker_threads(self):
+        path = self.root / "threaded.txt"
+        path.write_text("a" * 100000 + "!")
+        version = self.editor.read_code("threaded.txt")["version"]
+        errors = []
+        def run():
+            try:
+                self.editor.preview([dict(operation="replace_regex", file="threaded.txt", version=version,
+                                          pattern=r"(a+)+$", replacement="safe")])
+            except EditError as error:
+                errors.append(error)
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors[0].code, "regex_timeout")
+
+    def test_replace_regex_overmatch_reports_a_lower_bound(self):
+        path = self.root / "many.txt"
+        path.write_text("x x x\n")
+        version = self.editor.read_code("many.txt")["version"]
+        with self.assertRaises(EditError) as caught:
+            self.editor.preview([dict(operation="replace_regex", file="many.txt", version=version,
+                                      pattern="x", replacement="y", expected_matches=1)])
+        self.assertEqual(caught.exception.details["actual_matches_lower_bound"], 2)
+        self.assertTrue(caught.exception.details["actual_matches_truncated"])
 
     def test_replace_range_rejects_invalid_coordinates(self):
         version = self.editor.read_code("a.py")["version"]

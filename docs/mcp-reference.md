@@ -41,7 +41,9 @@ For example:
 match that crosses a line ending; otherwise such matches return
 `multiline_required`. `flags` may contain `i`, `m`, `s`, and `x`. The preview
 and `read_diff` response include up to 100 match locations under
-`match_reports` (500 locations maximum across one batch). Each regex evaluation
+`match_reports` on the initial diff page (100 locations per edit and 500 maximum
+across one batch). Reports include the zero-based `edit_index` so ordered
+batches with multiple regex edits remain unambiguous. Each regex evaluation
 has a two-second safety budget; a timeout returns `regex_timeout` without saving
 a preview.
 

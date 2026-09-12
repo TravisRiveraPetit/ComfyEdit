@@ -207,7 +207,9 @@ match count, and rejects cross-line matches unless `multiline` is true:
 }
 ```
 
-Use `flags` `i`, `m`, `s`, or `x` when needed. The regex edit has the same
+Use Python replacement syntax such as `\\g<name>` or `\\1`; shell-style `$1`
+backreferences are not supported. Use `flags` `i`, `m`, `s`, or `x` when needed.
+The regex edit has the same
 stale-version guard, preview, commit, and undo behavior as every other edit.
 Each regex evaluation has a two-second safety budget, and match locations are
 bounded to 100 per edit and 500 across a batch.

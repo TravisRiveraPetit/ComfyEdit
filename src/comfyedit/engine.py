@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import keyword
+import multiprocessing
 import os
 from pathlib import Path
 from .discovery import DiscoveryMixin
@@ -103,29 +104,21 @@ def rope_source(source):
     return source.replace("\r\n", "\n").replace("\r", "\n")
 
 
-@contextlib.contextmanager
-def regex_timeout(seconds=2):
-    """Bound stdlib regex backtracking when called from the main Unix thread."""
-    if not hasattr(signal, "SIGALRM"):
-        yield
-        return
+def regex_worker(connection, source, pattern, replacement, flags, expected):
+    """Evaluate an untrusted regex in a process the parent can terminate."""
     try:
-        previous_handler = signal.getsignal(signal.SIGALRM)
-        previous_timer = signal.setitimer(signal.ITIMER_REAL, 0)
-        def alarm(signum, frame):
-            raise TimeoutError("regular expression exceeded the time budget")
-        signal.signal(signal.SIGALRM, alarm)
-        signal.setitimer(signal.ITIMER_REAL, seconds)
-    except (AttributeError, OSError, ValueError):
-        yield
-        return
-    try:
-        yield
+        compiled = re.compile(pattern, flags)
+        matches = []
+        for match in compiled.finditer(source):
+            matches.append((match.start(), match.end()))
+            if len(matches) > expected:
+                break
+        rewritten = compiled.sub(replacement, source)
+        connection.send({"ok": True, "matches": matches, "source": rewritten})
+    except re.error as error:
+        connection.send({"ok": False, "code": "invalid_regex", "diagnostic": str(error)})
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_handler)
-        if previous_timer[0] > 0:
-            signal.setitimer(signal.ITIMER_REAL, previous_timer[0])
+        connection.close()
 
 
 def diff_chunks(before, after, before_modes=None, after_modes=None):
@@ -366,6 +359,31 @@ class Editor(DiscoveryMixin):
                 self.sync_directory(directory.parent)
             self.atomic_write(path, content.encode(), mode=mode)
 
+    @staticmethod
+    def evaluate_regex(source, pattern, replacement, flags, expected):
+        context = multiprocessing.get_context("spawn")
+        parent, child = context.Pipe(duplex=False)
+        process = context.Process(target=regex_worker,
+                                  args=(child, source, pattern, replacement, flags, expected))
+        process.start()
+        child.close()
+        try:
+            if not parent.poll(2):
+                if process.is_alive():
+                    process.terminate()
+                process.join(1)
+                raise EditError("regex_timeout", "Regular expression exceeded the 2 second safety budget.")
+            result = parent.recv()
+        finally:
+            parent.close()
+            if process.is_alive():
+                process.terminate()
+            process.join(1)
+        if not result.get("ok"):
+            raise EditError("invalid_regex", "Regular expression evaluation failed.",
+                            diagnostic=result.get("diagnostic", "unknown error"))
+        return result["matches"], result["source"]
+
     def save(self, state, identifier, payload):
         self.atomic_write(state / (identifier + ".json"), json.dumps(payload).encode())
 
@@ -395,7 +413,7 @@ class Editor(DiscoveryMixin):
                 if file not in before:
                     before[file], before_modes[file] = self.snapshot(file)
                     after[file], after_modes[file] = before[file], before_modes[file]
-            for edit in edits:
+            for edit_index, edit in enumerate(edits):
                 if not isinstance(edit, dict):
                     raise EditError("invalid_edits", "Each edit must be an object.")
                 file, op = edit["file"], edit["operation"]
@@ -468,50 +486,32 @@ class Editor(DiscoveryMixin):
                         raise EditError("invalid_range", "expected_matches must be between 1 and 10000.", file=file)
                     flag_value = sum({"i": re.IGNORECASE, "m": re.MULTILINE,
                                       "s": re.DOTALL, "x": re.VERBOSE}[flag] for flag in flags)
-                    try:
-                        with regex_timeout():
-                            compiled = re.compile(pattern, flag_value)
-                            # Stop after one extra match: counting millions of matches would
-                            # waste memory when the caller supplied the wrong expectation.
-                            matches = []
-                            for match in compiled.finditer(source):
-                                matches.append(match)
-                                if len(matches) > expected:
-                                    break
-                    except TimeoutError as error:
-                        raise EditError("regex_timeout", "Regular expression exceeded the 2 second safety budget.",
-                                        file=file) from error
-                    except re.error as error:
-                        raise EditError("invalid_regex", "pattern is not a valid regular expression.",
-                                        file=file, diagnostic=str(error)) from error
-                    if not multiline and any("\n" in match.group(0) or "\r" in match.group(0)
-                                              for match in matches):
+                    spans, rewritten = self.evaluate_regex(
+                        source, pattern, normalize_newlines(replacement, source), flag_value, expected)
+                    if not multiline and any("\n" in source[start:end] or "\r" in source[start:end]
+                                              for start, end in spans):
                         raise EditError("multiline_required", "A match crosses a line ending; set multiline=true to allow it.",
                                         file=file)
-                    if len(matches) != expected:
-                        raise EditError("match_count", "Regex must match the requested count.", file=file,
-                                        actual_matches=len(matches), expected_matches=expected)
+                    if len(spans) != expected:
+                        details = {"expected_matches": expected}
+                        if len(spans) > expected:
+                            details.update(actual_matches_lower_bound=len(spans), actual_matches_truncated=True)
+                        else:
+                            details["actual_matches"] = len(spans)
+                        raise EditError("match_count", "Regex must match the requested count.", file=file, **details)
                     locations = []
                     report_limit = min(100, max(0, 500 - reported_matches))
-                    for match in matches[:report_limit]:
-                        start_line, start_column = offset_position(source, match.start())
-                        end_line, end_column = offset_position(source, match.end())
-                        text = match.group(0)
+                    for start, end in spans[:report_limit]:
+                        start_line, start_column = offset_position(source, start)
+                        end_line, end_column = offset_position(source, end)
+                        text = source[start:end]
                         locations.append({"start_line": start_line, "start_column": start_column,
                                           "end_line": end_line, "end_column": end_column,
                                           "text": text[:200], "text_truncated": len(text) > 200})
                     reported_matches += len(locations)
-                    match_reports.append({"file": file, "count": len(matches), "shown": len(locations),
-                                          "truncated": len(matches) > len(locations), "matches": locations})
-                    try:
-                        with regex_timeout():
-                            after[file] = compiled.sub(normalize_newlines(replacement, source), source)
-                    except TimeoutError as error:
-                        raise EditError("regex_timeout", "Regular expression exceeded the 2 second safety budget.",
-                                        file=file) from error
-                    except re.error as error:
-                        raise EditError("invalid_regex", "replacement contains an invalid backreference.",
-                                        file=file, diagnostic=str(error)) from error
+                    match_reports.append({"edit_index": edit_index, "file": file, "count": len(spans), "shown": len(locations),
+                                          "truncated": len(spans) > len(locations), "matches": locations})
+                    after[file] = rewritten
                 elif op in {"replace_symbol", "insert_before", "insert_after"}:
                     self.python_only(file)
                     _, first, last, node = select(source, edit["symbol"])
@@ -585,10 +585,12 @@ class Editor(DiscoveryMixin):
             plan = self.load(state, plan_id)
             if plan["kind"] not in {"plan", "applied"}:
                 raise EditError("invalid_plan", "Use a plan_id returned by preview, rename_symbol, or undo_edit.")
-            return {"ok": True, "plan_id": plan_id, "offset": offset,
-                    "match_reports": plan.get("match_reports", []),
-                    **diff_page(plan["before"], plan["after"], offset, max_chars,
-                                plan.get("before_modes"), plan.get("after_modes"))}
+            result = {"ok": True, "plan_id": plan_id, "offset": offset,
+                      **diff_page(plan["before"], plan["after"], offset, max_chars,
+                                  plan.get("before_modes"), plan.get("after_modes"))}
+            if offset == 0:
+                result["match_reports"] = plan.get("match_reports", [])
+            return result
 
     def list_previews(self, include_applied=False, offset=0, limit=20):
         """List saved edit previews so an agent can recover a lost receipt ID."""

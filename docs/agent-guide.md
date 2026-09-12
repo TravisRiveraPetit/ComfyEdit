@@ -68,7 +68,8 @@ requires `multiline: true`; `flags` accepts `i`, `m`, `s`, and `x` (`m` changes
 `^` and `$`, while `multiline` permits line endings inside a match). Each regex
 evaluation has a two-second safety budget, and reports are capped at 100 matches
 per edit and 500 across a batch. Keep the expected count explicit so a broad
-pattern cannot silently rewrite extra text.
+pattern cannot silently rewrite extra text. Replacements use Python syntax
+(`\\1` or `\\g<name>`); `$1` is not interpreted as a backreference.
 
 For an exact location when the text is awkward to quote, use `replace_range`.
 Coordinates are 1-based physical lines and Unicode-character columns; the
