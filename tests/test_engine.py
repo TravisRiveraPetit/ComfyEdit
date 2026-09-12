@@ -12,7 +12,7 @@ class EditorTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.editor = Editor(self.root)
         self.write("a.py", "class Planner:\n    def solve(self):\n        return 1\n")
 
