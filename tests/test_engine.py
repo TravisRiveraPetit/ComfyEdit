@@ -129,6 +129,16 @@ class EditorTests(unittest.TestCase):
         self.assertIn("Other().solve()", content)
         self.assertIn("def find_plan", (self.root/"a.py").read_text())
 
+    def test_rename_after_unicode_line_separator(self):
+        prefix = 'text = "a\u2028b"\n'
+        self.write("a.py", prefix + "def solve(): return 1\n")
+        self.write("b.py", "from a import solve\nanswer = solve()\n")
+        plan = self.editor.rename_symbol("a.py", "solve", "find_plan", self.editor.read_code("a.py")["version"])
+        self.assertEqual(self.editor.read_diff(plan["plan_id"])["diff"], plan["diff"])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertEqual((self.root / "a.py").read_text(), prefix + "def find_plan(): return 1\n")
+        self.assertEqual((self.root / "b.py").read_text(), "from a import find_plan\nanswer = find_plan()\n")
+
     def test_rename_inventory_guard(self):
         p = self.editor.rename_symbol("a.py", "Planner.solve", "find_plan", self.editor.read_code("a.py")["version"])
         self.write("new.py", "from a import Planner\nx = Planner().solve()\n")

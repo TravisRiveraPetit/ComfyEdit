@@ -5,6 +5,7 @@ import ast
 import contextlib
 import difflib
 import hashlib
+import io
 import json
 import keyword
 import os
@@ -26,6 +27,35 @@ class EditError(Exception):
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def source_lines(source):
+    """Keep physical line endings without treating Unicode separators as lines."""
+    return io.StringIO(source, newline="").readlines()
+
+
+def diff_chunks(before, after):
+    for file, source in after.items():
+        for line in difflib.unified_diff(source_lines(before[file]), source_lines(source),
+                                        fromfile="a/" + file, tofile="b/" + file):
+            yield line
+            if not line.endswith(("\r", "\n")):
+                yield "\n\\ No newline at end of file\n"
+
+
+def diff_page(before, after, offset, max_chars):
+    chunks, total = [], 0
+    stop = offset + max_chars
+    for chunk in diff_chunks(before, after):
+        end = total + len(chunk)
+        if total < stop and end > offset:
+            chunks.append(chunk[max(0, offset - total):stop - total])
+        total = end
+    if offset > total:
+        raise EditError("invalid_range", "offset exceeds the diff length.", total_chars=total)
+    return {"diff": "".join(chunks), "total_chars": total,
+            "next_offset": stop if stop < total else None,
+            "diff_truncated": stop < total}
 
 
 def symbols(source):
@@ -89,6 +119,8 @@ class Editor:
         return data
 
     def read_code(self, file, symbol=None, start_line=1, max_lines=120):
+        if type(start_line) is not int or type(max_lines) is not int or start_line < 1 or not 1 <= max_lines <= 1000:
+            raise EditError("invalid_range", "start_line must be positive; max_lines must be 1..1000.")
         data = self.read_bytes(file)
         source = data.decode("utf-8")
         outline, diagnostics = [], []
@@ -97,13 +129,12 @@ class Editor:
                 outline = [{"symbol": n, "start_line": a, "end_line": b} for n, a, b, _ in symbols(source)]
             except SyntaxError as e:
                 diagnostics = [{"line": e.lineno, "message": e.msg}]
-        lines = source.splitlines(keepends=True)
+        lines = source_lines(source)
         end = len(lines)
         if symbol:
             self.python_only(file)
-            _, start_line, end, _ = select(source, symbol)
-        if start_line < 1 or not 1 <= max_lines <= 1000:
-            raise EditError("invalid_range", "start_line must be positive; max_lines must be 1..1000.")
+            _, first, end, _ = select(source, symbol)
+            start_line = max(start_line, first)
         stop = min(end, start_line - 1 + max_lines)
         return {"ok": True, "file": file, "version": digest(data), "start_line": start_line,
                 "end_line": stop, "text": "".join(lines[start_line-1:stop]),
@@ -185,11 +216,12 @@ class Editor:
                 elif op in {"replace_symbol", "insert_before", "insert_after"}:
                     self.python_only(file)
                     _, first, last, node = select(source, edit["symbol"])
-                    lines = source.splitlines(keepends=True)
+                    lines = source_lines(source)
                     indent = re.match(r"\s*", lines[node.lineno-1]).group()
-                    newline = "\r\n" if "\r\n" in source else "\n"
-                    content = textwrap.dedent(edit["code"]).strip("\r\n")
-                    code = textwrap.indent(content, indent).replace("\r\n", "\n").replace("\n", newline) + newline
+                    newline = "\r\n" if "\r\n" in source else "\r" if "\r" in source else "\n"
+                    content = edit["code"].replace("\r\n", "\n").replace("\r", "\n")
+                    content = textwrap.dedent(content).strip("\n")
+                    code = textwrap.indent(content, indent).replace("\n", newline) + newline
                     if op == "insert_before":
                         last = first - 1
                     elif op == "insert_after":
@@ -204,6 +236,8 @@ class Editor:
     def make_plan(self, state, before, after, guards=None, warnings=None):
         changed = {f: t for f, t in after.items() if t != before[f]}
         for f, source in changed.items():
+            if "\0" in source:
+                raise EditError("binary_file", "Proposed edit contains a NUL byte.", file=f)
             if len(source.encode()) > self.MAX_BYTES:
                 raise EditError("file_too_large", "Result exceeds 2 MB.", file=f)
             if f.endswith(".py"):
@@ -218,12 +252,21 @@ class Editor:
         payload = {"kind": "plan", "before": {f: before[f] for f in changed}, "after": changed,
                    "guards": guards or {f: digest(t.encode()) for f, t in before.items()}}
         self.save(state, identifier, payload)
-        diff = "".join("".join(difflib.unified_diff(before[f].splitlines(keepends=True),
-                    t.splitlines(keepends=True), fromfile="a/"+f, tofile="b/"+f)) for f, t in changed.items())
         return {"ok": True, "status": "preview", "plan_id": identifier, "files": list(changed),
-                "diff": diff[:24000], "diff_truncated": len(diff) > 24000,
+                **diff_page(payload["before"], changed, 0, 24000),
                 "diagnostics": [], "warnings": warnings or [],
-                "next": "commit_edit(plan_id) applies exactly this preview; read_code can inspect changed files afterward."}
+                "next": "If next_offset is set, use read_diff(plan_id, offset=next_offset) to review the rest. commit_edit(plan_id) applies exactly this preview."}
+
+    def read_diff(self, plan_id, offset=0, max_chars=24000):
+        """Page through the saved preview, independent of current source files."""
+        if type(offset) is not int or type(max_chars) is not int or offset < 0 or not 1 <= max_chars <= 24000:
+            raise EditError("invalid_range", "offset must be nonnegative; max_chars must be 1..24000.")
+        with self.lock() as state:
+            plan = self.load(state, plan_id)
+            if plan["kind"] not in {"plan", "applied"}:
+                raise EditError("invalid_plan", "Use a plan_id returned by preview, rename_symbol, or undo_edit.")
+            return {"ok": True, "plan_id": plan_id, "offset": offset,
+                    **diff_page(plan["before"], plan["after"], offset, max_chars)}
 
     def commit_edit(self, plan_id):
         with self.lock() as state:
@@ -293,7 +336,7 @@ class Editor:
             if file not in before or digest(before[file].encode()) != version:
                 raise EditError("stale_version", "Read the file again before renaming.")
             _, _, _, node = select(before[file], symbol)
-            lines = before[file].splitlines(keepends=True)
+            lines = source_lines(before[file])
             match = re.search(r"\b(?:def|class)\s+(" + re.escape(node.name) + r")\b", lines[node.lineno-1])
             offset = sum(map(len, lines[:node.lineno-1])) + match.start(1)
             for f, source in before.items():

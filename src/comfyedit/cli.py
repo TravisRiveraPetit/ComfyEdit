@@ -9,7 +9,7 @@ def dispatch(editor, request):
     try:
         request = dict(request)
         operation = request.pop("tool")
-        allowed = {"read_code", "preview", "rename_symbol", "commit_edit", "undo_edit"}
+        allowed = {"read_code", "read_diff", "preview", "rename_symbol", "commit_edit", "undo_edit"}
         if operation not in allowed:
             raise EditError("unknown_tool", "Choose a supported tool.", tools=sorted(allowed))
         return getattr(editor, operation)(**request)

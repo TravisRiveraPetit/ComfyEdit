@@ -23,7 +23,7 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     await session.initialize()
                     listed = await session.list_tools()
                     self.assertEqual({x.name for x in listed.tools},
-                        {"read_code", "preview", "rename_symbol", "commit_edit", "undo_edit"})
+                        {"read_code", "read_diff", "preview", "rename_symbol", "commit_edit", "undo_edit"})
                     async def call(name, args):
                         result = await session.call_tool(name, args)
                         self.assertFalse(result.isError, result)
@@ -32,6 +32,21 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     p = await call("preview", {"edits": [{"operation": "replace_symbol", "file": "demo.py",
                         "version": r["version"], "symbol": "answer", "code": "def answer():\n    return 42"}]})
                     self.assertEqual(source.read_text(), "def answer():\n    return 1\n")
+                    tools = {tool.name: tool for tool in listed.tools}
+                    self.assertTrue(tools["read_diff"].annotations.readOnlyHint)
+                    pieces, offset = [], 0
+                    while offset is not None:
+                        page = await call("read_diff", {"plan_id": p["plan_id"], "offset": offset, "max_chars": 7})
+                        self.assertTrue(page["ok"])
+                        pieces.append(page["diff"])
+                        offset = page["next_offset"]
+                    self.assertEqual("".join(pieces), p["diff"])
+                    invalid = await call("read_diff", {"plan_id": p["plan_id"], "offset": -1})
+                    self.assertEqual(invalid["error"]["code"], "invalid_range")
+                    first = await call("read_code", {"file": "demo.py", "symbol": "answer", "max_lines": 1})
+                    last = await call("read_code", {"file": "demo.py", "symbol": "answer", "start_line": first["next_line"]})
+                    self.assertEqual(last["text"], "    return 1\n")
+                    self.assertIsNone(last["next_line"])
                     result = await call("commit_edit", {"plan_id": p["plan_id"]})
                     self.assertIn("42", source.read_text())
                     undo = await call("undo_edit", {"undo_id": result["undo_id"]})
