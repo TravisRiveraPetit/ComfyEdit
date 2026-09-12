@@ -50,6 +50,22 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual((reference["line"], reference["column"], reference["end_line"], reference["end_column"]),
                          (2, 5, 2, 11))
 
+    def test_crlf_references_and_renames_keep_logical_columns_and_newlines(self):
+        target = self.root / "crlf.py"
+        target.write_bytes(b"def answer(value):\r\n    return value\r\n")
+        caller = self.root / "caller.py"
+        caller.write_bytes(b"from crlf import answer\r\nresult = answer(1)\r\n")
+        read = self.editor.read_code("crlf.py", symbol="answer")
+        references = self.editor.find_references("crlf.py", "answer", read["version"])
+        call = next(item for item in references["references"] if item["file"] == "caller.py" and item["kind"] == "call")
+        self.assertEqual((call["line"], call["column"], call["end_line"], call["end_column"]), (2, 10, 2, 16))
+        plan = self.editor.rename_symbol("crlf.py", "answer", "respond", read["version"])
+        self.assertNotIn("-    return value", plan["diff"])
+        self.assertNotIn("+    return value", plan["diff"])
+        self.editor.commit_edit(plan["plan_id"])
+        self.assertNotIn(b"\n", target.read_bytes().replace(b"\r\n", b""))
+        self.assertIn(b"respond", caller.read_bytes())
+
     def assert_error(self, code, function, *args, **kwargs):
         with self.assertRaises(EditError) as caught:
             function(*args, **kwargs)

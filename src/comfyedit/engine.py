@@ -85,6 +85,11 @@ def offset_position(source, offset):
     return len(lines) + 1, 1
 
 
+def rope_source(source):
+    """Rope's parser coordinates use LF logical lines regardless of disk style."""
+    return source.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def diff_chunks(before, after, before_modes=None, after_modes=None):
     before_modes, after_modes = before_modes or {}, after_modes or {}
     for file, source in after.items():
@@ -786,7 +791,7 @@ class Editor(DiscoveryMixin):
             if file not in before or digest(before[file].encode()) != version:
                 raise EditError("stale_version", "Read the file again before renaming.")
             _, _, _, node = select(before[file], symbol)
-            lines = source_lines(before[file])
+            lines = source_lines(rope_source(before[file]))
             match = re.search(r"\b(?:def|class)\s+(" + re.escape(node.name) + r")\b", lines[node.lineno-1])
             offset = sum(map(len, lines[:node.lineno-1])) + match.start(1)
             for f, source in before.items():
@@ -803,7 +808,10 @@ class Editor(DiscoveryMixin):
                         for child in change.changes:
                             collect(child)
                     elif isinstance(change, ChangeContents):
-                        after[change.resource.path] = change.new_contents
+                        changed_file = Path(change.resource.path).as_posix()
+                        if changed_file.startswith(Path(tmp).as_posix() + "/"):
+                            changed_file = Path(changed_file).relative_to(Path(tmp).as_posix()).as_posix()
+                        after[changed_file] = normalize_newlines(change.new_contents, before[changed_file])
                     else:
                         raise EditError("unsupported_change", "Rename requested a non-content change.")
                 collect(changes)
@@ -864,8 +872,9 @@ class Editor(DiscoveryMixin):
                     source = before[relative]
                     for occurrence in finder.find_occurrences(resource=python_resource):
                         start, end = occurrence.get_word_range()
-                        line_number, column = offset_position(source, start)
-                        end_line, end_column = offset_position(source, end)
+                        logical = rope_source(source)
+                        line_number, column = offset_position(logical, start)
+                        end_line, end_column = offset_position(logical, end)
                         kind = ("definition" if occurrence.is_defined() else "call" if occurrence.is_called()
                                 else "write" if occurrence.is_written() else "import" if occurrence.is_in_import_statement()
                                 else "reference")
