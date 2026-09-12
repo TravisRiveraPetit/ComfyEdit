@@ -18,7 +18,7 @@ of tool operations. Keep these design rules:
 1. Durable recovery: interrupted transaction inspection and guarded recovery.
 2. LSP backend: definition/reference navigation and workspace edits with source
    version guards. Negotiate each server's actual capabilities.
-3. File lifecycle operations and full paginated diff retrieval.
+3. File lifecycle operations.
 4. Typed diagnostics adapters and explicit opt-in validation commands.
 5. Windows locking; benchmark large repositories and context/token costs.
 6. Three-way selective undo with conflict reporting, never silent overwrites.
