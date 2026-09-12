@@ -61,6 +61,28 @@ class WorkflowTests(unittest.TestCase):
         self.editor.commit_edit(redo["plan_id"])
         self.assertEqual((self.root / "src/moved.py").read_text(), "value = 2\n")
 
+    def test_previews_are_discoverable_and_unapplied_previews_can_be_discarded(self):
+        plan = self.editor.preview([self.edit("replace_text", old="1", new="2")])
+        listed = self.editor.list_previews()
+        self.assertEqual(listed["previews"][0]["plan_id"], plan["plan_id"])
+        self.assertEqual(listed["previews"][0]["status"], "preview")
+        discarded = self.editor.discard_preview(plan["plan_id"])
+        self.assertEqual(discarded["status"], "discarded")
+        self.assertEqual(self.editor.list_previews()["previews"], [])
+        with self.assertRaises(EditError) as caught:
+            self.editor.read_diff(plan["plan_id"])
+        self.assertEqual(caught.exception.code, "unknown_id")
+
+    def test_applied_preview_stays_listed_and_cannot_be_discarded(self):
+        plan = self.editor.preview([self.edit("replace_text", old="1", new="2")])
+        result = self.editor.commit_edit(plan["plan_id"])
+        listed = self.editor.list_previews(include_applied=True)
+        self.assertEqual(listed["previews"][0]["status"], "applied")
+        with self.assertRaises(EditError) as caught:
+            self.editor.discard_preview(plan["plan_id"])
+        self.assertEqual(caught.exception.code, "preview_in_use")
+        self.assertEqual(self.editor.undo_edit(result["undo_id"])["ok"], True)
+
     def test_delete_and_restore_executable(self):
         plan = self.editor.preview([self.edit("delete_file")])
         result = self.editor.commit_edit(plan["plan_id"])
