@@ -76,6 +76,8 @@ def offset_position(source, offset):
     """Convert a character offset to a physical line and Unicode column."""
     cursor = 0
     lines = source_lines(source)
+    if lines and offset == len(source) and not lines[-1].endswith(("\r", "\n")):
+        return len(lines), len(lines[-1]) + 1
     for line_number, line in enumerate(lines, 1):
         if cursor <= offset < cursor + len(line):
             return line_number, offset - cursor + 1

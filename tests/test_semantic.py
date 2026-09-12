@@ -42,6 +42,14 @@ class SemanticTests(unittest.TestCase):
             self.editor.find_references("a.py", "missing", read["version"])
         self.assertEqual(caught.exception.code, "symbol_not_unique")
 
+    def test_reference_range_ending_at_eof_uses_final_line_without_newline(self):
+        (self.root / "c.py").write_text("from a import answer\nx = answer")
+        read = self.editor.read_code("a.py", symbol="answer")
+        result = self.editor.find_references("a.py", "answer", read["version"])
+        reference = next(item for item in result["references"] if item["file"] == "c.py" and item["line"] == 2)
+        self.assertEqual((reference["line"], reference["column"], reference["end_line"], reference["end_column"]),
+                         (2, 5, 2, 11))
+
     def assert_error(self, code, function, *args, **kwargs):
         with self.assertRaises(EditError) as caught:
             function(*args, **kwargs)
