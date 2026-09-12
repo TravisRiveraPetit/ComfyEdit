@@ -30,6 +30,23 @@ parallel mutation paths. `plan_id` means a saved edit preview ID, not agent reas
 Keep backends behind the preview/commit contract. Semantic guarantees must
 name the language/backend and distinguish proven targets from inferred ones.
 
+## Development
+
+```sh
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+The tests cover file integrity, stale edits, ambiguous matches, cross-file
+renaming, undo, rollback, symbol paging, complete Unicode diff retrieval,
+JSON CLI subprocesses, file lifecycle operations, permission guards, actual
+process termination and recovery, and real MCP stdio communication. CI runs
+Python 3.11–3.13 on Linux, Python 3.12 on macOS, and a core-only install without
+MCP or Rope.
+
+Run `.venv/bin/python examples/workflow.py` for a disposable end-to-end example.
+ComfyEdit uses the [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+and [Rope's refactoring API](https://rope.readthedocs.io/en/latest/library.html).
+
 ## Evaluation ideas
 
 Use fixed tasks in disposable worktrees: rename a public method, edit a nested

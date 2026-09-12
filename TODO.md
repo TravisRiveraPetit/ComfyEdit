@@ -54,6 +54,8 @@ real change. Completed work stays listed so the project history remains clear.
 - [x] Add a compact agent guide and a runnable end-to-end example.
 - [x] Add a concise “ComfyEdit vs normal patch/terminal tools” decision guide.
 - [x] Add a compact MCP argument/schema reference.
+- [x] Keep the main README focused on installing and using ComfyEdit; move
+  maintainer workflow and implementation notes to contributor documentation.
 - [x] Explain `plan_id` as an edit-preview receipt rather than agent reasoning.
 - [x] Show recovery output with `before`, `after`, `both`, and `conflict` states.
 - [x] Surface core limits and the core-only CI job.

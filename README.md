@@ -352,22 +352,7 @@ and message. MCP clients must inspect `ok` in the tool payload.
   mutations, or automatic project test execution yet. Run project tests with your
   normal execution tool after committing an edit.
 
-## Development
-
-```sh
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-The tests cover file integrity, stale edits, ambiguous matches, cross-file
-renaming, undo, rollback, symbol paging, complete Unicode diff retrieval,
-JSON CLI subprocesses, file lifecycle operations, permission guards, actual
-process termination and recovery, and real MCP stdio communication. CI runs
-Python 3.11–3.13 on Linux, Python 3.12 on macOS, and a core-only install without
-MCP or Rope.
-
-Run `.venv/bin/python examples/workflow.py` for a disposable end-to-end example.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for API principles and extension priorities,
-and [AGENTS.md](AGENTS.md) for working on this repository.
-
-Built using the [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-and [Rope's refactoring API](https://rope.readthedocs.io/en/latest/library.html).
+For maintainers, contributor guidance, test commands, and implementation
+invariants are in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and
+the [agent guide](docs/agent-guide.md). The repository also includes a
+disposable workflow example at `examples/workflow.py`.
