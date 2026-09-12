@@ -143,7 +143,7 @@ def create_server(root):
         """Recover a pending journal directly: restore before or finish after. Refuse if any file matches neither recorded state."""
         return dispatch(editor, dict(tool="recover_transaction", transaction_id=transaction_id, action=action))
 
-    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True))
     def validate(command: list[str], timeout_seconds: float = 120, max_output_chars: int = 12000) -> dict:
         """Run an explicitly requested argv command with bounded output; never invokes a shell."""
         return dispatch(editor, dict(tool="validate", command=command,

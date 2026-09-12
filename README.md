@@ -60,8 +60,8 @@ guarded and refuses to overwrite a file that changed to an unknown state.
 ### Run validation explicitly
 
 After committing, ask ComfyEdit to run a bounded argv command and capture its
-result. It never invokes a shell, runs during reads, or runs implicitly after a
-commit:
+result. This is trusted code execution in the project root: it never invokes a
+shell, receives no stdin, runs during reads, or runs implicitly after a commit:
 
 ```json
 {"tool":"validate","command":["python","-m","pytest","-q"],"timeout_seconds":120,"max_output_chars":12000}
@@ -405,9 +405,11 @@ and message. MCP clients must inspect `ok` in the tool payload.
 
 ## Guarantees and limits
 
-- Source is never executed. New edit previews require resulting Python files to
-  compile. This is a syntax check, not type checking or behavioral validation.
-  Undo restores recorded originals even when they originally had syntax errors.
+- Discovery, reading, preview, rename, and recovery never execute project code.
+  The explicit `validate` tool is the exception: it runs the argv you request.
+  New edit previews require resulting Python files to compile. This is a syntax
+  check, not type checking or behavioral validation. Undo restores recorded
+  originals even when they originally had syntax errors.
 - All input hashes are checked before writes. An advisory project lock
   serializes ComfyEdit processes. External editors do not take this lock: use
   separate worktrees for concurrent independent agents.
@@ -425,9 +427,9 @@ and message. MCP clients must inspect `ok` in the tool payload.
   Python files and ignores common dependency/build metadata directories.
   Diff responses are capped at 24,000 characters with an explicit truncation
   flag; `read_diff` provides the remaining pages from the saved plan.
-- No signature refactoring, semantic reference-list tool, LSP backend, Windows
-  mutations, or automatic project test execution yet. Run project tests with your
-  normal execution tool after committing an edit.
+- No signature refactoring, semantic reference-list tool, LSP backend, or
+  Windows mutations yet. Validation is explicit and bounded; it is never run
+  automatically after an edit.
 
 For maintainers, contributor guidance, test commands, and implementation
 invariants are in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and

@@ -38,6 +38,24 @@ class ValidationTests(unittest.TestCase):
         self.assertLessEqual(len(result["stdout"]), 100)
         self.assertTrue(result["stdout_truncated"])
 
+    def test_validate_timeout_still_applies_after_pipes_close_and_stdin_is_closed(self):
+        result = dispatch(self.editor, {"tool": "validate", "command": [
+            sys.executable, "-c", "import os,time; os.close(1); os.close(2); time.sleep(2)"],
+            "timeout_seconds": 0.1})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "timed_out")
+        self.assertLess(result["duration_seconds"], 1)
+        stdin_result = dispatch(self.editor, {"tool": "validate", "command": [
+            sys.executable, "-c", "import sys; print(repr(sys.stdin.read()))"]})
+        self.assertEqual(stdin_result["status"], "passed")
+        self.assertEqual(stdin_result["stdout"], "''\n")
+
+    def test_validate_reports_exact_output_limit_as_not_truncated(self):
+        result = dispatch(self.editor, {"tool": "validate", "command": [
+            sys.executable, "-c", "print('x' * 99, end='')"], "max_output_chars": 100})
+        self.assertEqual(result["stdout"], "x" * 99)
+        self.assertFalse(result["stdout_truncated"])
+
     def test_validate_rejects_shell_strings_and_missing_commands(self):
         invalid = dispatch(self.editor, {"tool": "validate", "command": "echo unsafe"})
         self.assertFalse(invalid["ok"])

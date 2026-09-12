@@ -555,8 +555,9 @@ class Editor(DiscoveryMixin):
                             transaction_ids=pending)
         started = time.monotonic()
         try:
-            process = subprocess.Popen(command, cwd=self.root, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE, shell=False, start_new_session=True)
+            process = subprocess.Popen(command, cwd=self.root, stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False,
+                                       start_new_session=True)
         except FileNotFoundError as error:
             raise EditError("command_not_found", "The validation command was not found.", command=command) from error
         except OSError as error:
@@ -588,7 +589,7 @@ class Editor(DiscoveryMixin):
                     buffer.extend(data[:max_bytes - len(buffer)])
                 if len(data) > max_bytes - min(len(buffer), max_bytes):
                     truncated[key.fileobj] = True
-        if timed_out:
+        def stop_process():
             try:
                 if hasattr(os, "killpg"):
                     os.killpg(process.pid, signal.SIGKILL)
@@ -596,10 +597,19 @@ class Editor(DiscoveryMixin):
                     process.kill()
             except ProcessLookupError:
                 pass
-        try:
-            exit_code = process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
+        if not timed_out:
+            remaining = timeout_seconds - (time.monotonic() - started)
+            if process.poll() is None:
+                try:
+                    exit_code = process.wait(timeout=max(0, remaining))
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    stop_process()
+                    exit_code = process.wait()
+            else:
+                exit_code = process.returncode
+        else:
+            stop_process()
             exit_code = process.wait()
         for stream in list(streams):
             try:
@@ -616,8 +626,8 @@ class Editor(DiscoveryMixin):
         status = "timed_out" if timed_out else "passed" if exit_code == 0 else "failed"
         return {"ok": True, "status": status, "command": command, "exit_code": None if timed_out else exit_code,
                 "timed_out": timed_out, "stdout": stdout, "stderr": stderr,
-                "stdout_truncated": truncated[process.stdout] or len(stdout) == max_output_chars,
-                "stderr_truncated": truncated[process.stderr] or len(stderr) == max_output_chars,
+                "stdout_truncated": truncated[process.stdout],
+                "stderr_truncated": truncated[process.stderr],
                 "duration_seconds": round(time.monotonic() - started, 4)}
 
     def clean_created_dirs(self, journal):

@@ -91,10 +91,12 @@ After a successful commit, run the project's appropriate tests. Syntax validatio
 alone does not establish correctness; Rope cannot reliably cover dynamic callers.
 
 You can run an explicit command through `validate(command=[...])` after the
-commit. Pass argv as a list, never a shell string. It returns a successful tool
-payload even when the command itself fails; inspect `status` (`passed`, `failed`,
-or `timed_out`), `exit_code`, and the bounded stdout/stderr. Validation is never
-implicit and is blocked while a transaction needs recovery.
+commit. This is trusted code execution in the project root: pass argv as a list,
+never a shell string, and do not use it for untrusted input. It returns a
+successful tool payload even when the command itself fails; inspect `status`
+(`passed`, `failed`, or `timed_out`), `exit_code`, and bounded stdout/stderr.
+Validation is never implicit, receives no stdin, and is blocked while a
+transaction needs recovery.
 
 Example pending-transaction summary:
 
