@@ -72,6 +72,19 @@ def normalize_newlines(code, source):
     return code.replace("\r\n", "\n").replace("\r", "\n").replace("\n", newline)
 
 
+def preserve_line_endings(code, original):
+    """Restore each original physical line ending after a logical rewrite."""
+    original_lines = source_lines(original)
+    rewritten_lines = source_lines(rope_source(code))
+    if len(original_lines) != len(rewritten_lines):
+        return normalize_newlines(code, original)
+    result = []
+    for old_line, new_line in zip(original_lines, rewritten_lines):
+        ending = old_line[len(old_line.rstrip("\r\n")):]
+        result.append(new_line.rstrip("\r\n") + ending)
+    return "".join(result)
+
+
 def offset_position(source, offset):
     """Convert a character offset to a physical line and Unicode column."""
     cursor = 0
@@ -215,9 +228,12 @@ class Editor(DiscoveryMixin):
             _, first, end, _ = select(source, symbol)
             if start_line < first:
                 start_line, start_column = first, 1
+        if start_line > end + 1:
+            raise EditError("invalid_range", "start_line is past the end of the selected source.",
+                            start_line=start_line, last_line=end)
         if start_line <= end and start_column > len(lines[start_line - 1]) + 1:
             raise EditError("invalid_range", "start_column is past the end of the selected line.")
-        chunks, remaining, last = [], max_chars, min(end, start_line - 1)
+        chunks, remaining, last = [], max_chars, start_line if start_line > end else min(end, start_line - 1)
         next_line, next_column = None, None
         for number in range(start_line, min(end, start_line + max_lines - 1) + 1):
             column = start_column if number == start_line else 1
@@ -603,10 +619,11 @@ class Editor(DiscoveryMixin):
                     key.fileobj.close()
                     continue
                 buffer = streams[key.fileobj]
-                if len(buffer) < max_bytes:
-                    buffer.extend(data[:max_bytes - len(buffer)])
-                if len(data) > max_bytes - min(len(buffer), max_bytes):
+                available = max_bytes - len(buffer)
+                if len(data) > available:
                     truncated[key.fileobj] = True
+                if available > 0:
+                    buffer.extend(data[:available])
         def stop_process():
             try:
                 if hasattr(os, "killpg"):
@@ -770,7 +787,11 @@ class Editor(DiscoveryMixin):
             for name in sorted(names):
                 p = Path(root) / name
                 if name.endswith(".py") and not p.is_symlink():
-                    files.append(p.relative_to(self.root).as_posix())
+                    try:
+                        if stat.S_ISREG(p.stat().st_mode):
+                            files.append(p.relative_to(self.root).as_posix())
+                    except OSError:
+                        continue
         return sorted(files)
 
     def rename_symbol(self, file, symbol, new_name, version):
@@ -811,7 +832,7 @@ class Editor(DiscoveryMixin):
                         changed_file = Path(change.resource.path).as_posix()
                         if changed_file.startswith(Path(tmp).as_posix() + "/"):
                             changed_file = Path(changed_file).relative_to(Path(tmp).as_posix()).as_posix()
-                        after[changed_file] = normalize_newlines(change.new_contents, before[changed_file])
+                        after[changed_file] = preserve_line_endings(change.new_contents, before[changed_file])
                     else:
                         raise EditError("unsupported_change", "Rename requested a non-content change.")
                 collect(changes)

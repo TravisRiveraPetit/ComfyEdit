@@ -36,6 +36,7 @@ class PagingTests(unittest.TestCase):
         self.assertEqual(first["version"], last["version"])
         empty = self.editor.read_code("a.py", symbol="target", start_line=6)
         self.assertEqual(empty["text"], "")
+        self.assertEqual(empty["end_line"], 6)
         self.assertIsNone(empty["next_line"])
 
     def test_python_line_numbers_ignore_unicode_separators(self):
@@ -140,6 +141,8 @@ class PagingTests(unittest.TestCase):
         for args in ({"start_line": 0}, {"start_line": True}, {"max_lines": 1.5}):
             result = dispatch(self.editor, dict(tool="read_code", file="a.txt", **args))
             self.assertEqual(result["error"]["code"], "invalid_range")
+        result = dispatch(self.editor, dict(tool="read_code", file="a.txt", start_line=999))
+        self.assertEqual(result["error"]["code"], "invalid_range")
         for identifier, code in [("../bad", "invalid_id"), ("0" * 32, "unknown_id")]:
             result = dispatch(self.editor, dict(tool="read_diff", plan_id=identifier))
             self.assertEqual(result["error"]["code"], code)

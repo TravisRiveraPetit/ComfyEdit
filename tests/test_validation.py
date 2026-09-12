@@ -56,6 +56,11 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["stdout"], "x" * 99)
         self.assertFalse(result["stdout_truncated"])
 
+        unicode_result = dispatch(self.editor, {"tool": "validate", "command": [
+            sys.executable, "-c", "print('😀' * 100, end='')"], "max_output_chars": 100})
+        self.assertEqual(unicode_result["stdout"], "😀" * 100)
+        self.assertFalse(unicode_result["stdout_truncated"])
+
         larger = dispatch(self.editor, {"tool": "validate", "command": [
             sys.executable, "-c", "print('x' * 150, end='')"], "max_output_chars": 100})
         self.assertEqual(larger["stdout"], "x" * 100)
