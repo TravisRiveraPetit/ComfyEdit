@@ -1,4 +1,5 @@
 import os
+import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
@@ -100,10 +101,10 @@ class EditorTests(unittest.TestCase):
         before = (self.root/"a.py").read_bytes()
         p = self.editor.preview([self.edit(operation="replace_text", old="return 1", new="return 2"), self.edit("b.py", operation="replace_text", old="1", new="2")])
         real = self.editor.atomic_write
-        def failing(path, data):
+        def failing(path, data, **kwargs):
             if path == self.root/"b.py":
                 raise OSError("simulated write failure")
-            return real(path, data)
+            return real(path, data, **kwargs)
         with patch.object(self.editor, "atomic_write", side_effect=failing):
             with self.assertRaises(OSError):
                 self.editor.commit_edit(p["plan_id"])
@@ -120,6 +121,7 @@ class EditorTests(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertEqual(r["error"]["code"], "invalid_request")
 
+    @unittest.skipUnless(importlib.util.find_spec("rope"), "Install .[python] for rename tests")
     def test_rename_cross_file(self):
         self.write("b.py", "from a import Planner\nanswer = Planner().solve()\n\nclass Other:\n    def solve(self): return 9\n\nx = Other().solve()\n")
         p = self.editor.rename_symbol("a.py", "Planner.solve", "find_plan", self.editor.read_code("a.py")["version"])
@@ -129,6 +131,7 @@ class EditorTests(unittest.TestCase):
         self.assertIn("Other().solve()", content)
         self.assertIn("def find_plan", (self.root/"a.py").read_text())
 
+    @unittest.skipUnless(importlib.util.find_spec("rope"), "Install .[python] for rename tests")
     def test_rename_after_unicode_line_separator(self):
         prefix = 'text = "a\u2028b"\n'
         self.write("a.py", prefix + "def solve(): return 1\n")
@@ -139,6 +142,7 @@ class EditorTests(unittest.TestCase):
         self.assertEqual((self.root / "a.py").read_text(), prefix + "def find_plan(): return 1\n")
         self.assertEqual((self.root / "b.py").read_text(), "from a import find_plan\nanswer = find_plan()\n")
 
+    @unittest.skipUnless(importlib.util.find_spec("rope"), "Install .[python] for rename tests")
     def test_rename_inventory_guard(self):
         p = self.editor.rename_symbol("a.py", "Planner.solve", "find_plan", self.editor.read_code("a.py")["version"])
         self.write("new.py", "from a import Planner\nx = Planner().solve()\n")

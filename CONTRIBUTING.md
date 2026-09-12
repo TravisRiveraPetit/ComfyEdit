@@ -15,13 +15,17 @@ of tool operations. Keep these design rules:
 
 ## Next priorities
 
-1. Durable recovery: interrupted transaction inspection and guarded recovery.
+1. Evaluate realistic workflows against ordinary patches: correctness, tool calls,
+   bytes of context, and elapsed time. Publish the methodology and raw results.
 2. LSP backend: definition/reference navigation and workspace edits with source
    version guards. Negotiate each server's actual capabilities.
-3. File lifecycle operations.
-4. Typed diagnostics adapters and explicit opt-in validation commands.
-5. Windows locking; benchmark large repositories and context/token costs.
-6. Three-way selective undo with conflict reporting, never silent overwrites.
+3. Typed diagnostics adapters and explicit opt-in validation commands.
+4. Windows locking and durable writes; large-repository discovery/search budgets.
+5. Three-way selective undo with conflict reporting, never silent overwrites.
+
+File lifecycle operations, complete paginated diff retrieval, bounded discovery,
+and guarded recovery are implemented. Extend these contracts rather than adding
+parallel mutation paths. `plan_id` means a saved edit preview ID, not agent reasoning.
 
 Keep backends behind the preview/commit contract. Semantic guarantees must
 name the language/backend and distinguish proven targets from inferred ones.
